@@ -5,16 +5,8 @@ interface ProductsChartProps {
   data?: Array<{ name: string; products: number; sales: number }>;
 }
 
-const defaultData = [
-  { name: 'Jan', products: 12, sales: 45 },
-  { name: 'Feb', products: 18, sales: 62 },
-  { name: 'Mar', products: 15, sales: 58 },
-  { name: 'Apr', products: 22, sales: 78 },
-  { name: 'May', products: 28, sales: 95 },
-  { name: 'Jun', products: 24, sales: 88 },
-];
-
-const ProductsChart = ({ data = defaultData }: ProductsChartProps) => {
+const ProductsChart = ({ data }: ProductsChartProps) => {
+  const chartData = data && data.length ? data : [];
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -23,9 +15,14 @@ const ProductsChart = ({ data = defaultData }: ProductsChartProps) => {
       className="bg-card rounded-2xl border border-border p-6"
     >
       <h2 className="text-lg font-semibold text-foreground mb-4">Products & Sales</h2>
+      {!chartData.length ? (
+        <div className="h-[120px] flex items-center justify-center text-muted-foreground text-sm bg-secondary/50 rounded-xl border border-border">
+          No product data yet.
+        </div>
+      ) : (
       <div className="h-[280px]">
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={data} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+          <BarChart data={chartData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
             <XAxis 
               dataKey="name" 
@@ -65,6 +62,7 @@ const ProductsChart = ({ data = defaultData }: ProductsChartProps) => {
           </BarChart>
         </ResponsiveContainer>
       </div>
+      )}
       <div className="flex items-center justify-center gap-6 mt-4">
         <div className="flex items-center gap-2">
           <div className="w-3 h-3 rounded-full bg-chart-1" />

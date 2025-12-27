@@ -10,7 +10,14 @@ import { CategoryManagementTab } from '@/components/admin/tabs/CategoryManagemen
 import { BusinessManagementTab } from '@/components/admin/tabs/BusinessManagementTab';
 import { AdminSettingsTab } from '@/components/admin/tabs/AdminSettingsTab';
 
-const API_BASE = 'https://api.zooda.in/api';
+const API_HOST =
+  (import.meta as any)?.env?.VITE_API_BASE ||
+  ((typeof window !== 'undefined' &&
+    (window.location.hostname === 'localhost' ||
+      window.location.hostname === '127.0.0.1'))
+    ? 'http://127.0.0.1:5000'
+    : 'https://api.zooda.in');
+const API_BASE = `${API_HOST.replace(/\/$/, '')}/api`;
 const DEFAULT_PASSWORD = 'zooda';
 
 interface AdminData {
@@ -55,7 +62,7 @@ const Index = () => {
   useEffect(() => {
     // Check if this is the first time accessing the admin panel
     const hasAccessedBefore = localStorage.getItem('adminHasAccessedBefore');
-    
+
     if (!hasAccessedBefore) {
       // First time access - use default password
       localStorage.setItem('adminPassword', DEFAULT_PASSWORD);
@@ -315,14 +322,14 @@ const Index = () => {
         sidebarOpen={sidebarOpen}
         setSidebarOpen={setSidebarOpen}
       />
-      
+
       <div className="flex-1 flex flex-col overflow-hidden">
         <AdminHeader
           onMenuClick={() => setSidebarOpen(true)}
           onRefresh={loadAdminData}
           onLogout={handleLogout}
         />
-        
+
         <main className="flex-1 overflow-y-auto p-4 md:p-6 scrollbar-thin">
           {renderTabContent()}
         </main>

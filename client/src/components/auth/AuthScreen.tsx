@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { LogIn, UserPlus, Mail, Lock, User, ArrowLeft, Eye, EyeOff } from 'lucide-react';
-import axios from '@/lib/api';
+import axios, { API_BASE_URL } from '@/lib/api';
 
 interface AuthScreenProps {
   isRegister: boolean;
@@ -67,7 +67,7 @@ const AuthScreen = ({ isRegister, onAuthSuccess, switchMode }: AuthScreenProps) 
 
     setAuthLoading(true);
     try {
-      const res = await axios.post('https://api.zooda.in/reset-password-direct', {
+      const res = await axios.post(`${API_BASE_URL}/reset-password-direct`, {
         email: forgotEmail,
         newPassword: newPassword,
       });

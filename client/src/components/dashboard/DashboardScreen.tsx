@@ -31,6 +31,7 @@ const DashboardScreen = ({ existingBusiness, user, notify }: DashboardScreenProp
     try {
       setLoading(true);
       const response = await axios.get(`/dashboard/${businessId}`);
+      console.log(response.data)
 
       if (response.data && response.data.success && response.data.dashboard) {
         setDashboardData(response.data.dashboard);
@@ -50,6 +51,10 @@ const DashboardScreen = ({ existingBusiness, user, notify }: DashboardScreenProp
 
   useEffect(() => {
     fetchDashboardData();
+    const interval = setInterval(() => {
+      fetchDashboardData();
+    }, 30000); // refresh every 30s for near‑real-time stats
+    return () => clearInterval(interval);
   }, [fetchDashboardData]);
 
   if (loading) {
@@ -84,6 +89,9 @@ const DashboardScreen = ({ existingBusiness, user, notify }: DashboardScreenProp
     recentActivity = [],
     business = {},
     platformPerformance = [],
+    engagementSeries = [],
+    productsSeries = [],
+    overviewSeries = [],
   } = dashboardData;
 
   const { totalEngagement = 0, totalProducts = 0, totalPromotions = 0, followers = 0, totalPosts = 0 } = stats;
@@ -147,12 +155,12 @@ const DashboardScreen = ({ existingBusiness, user, notify }: DashboardScreenProp
 
       {/* Charts Section */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <EngagementChart />
-        <ProductsChart />
+        <EngagementChart data={engagementSeries} />
+        <ProductsChart data={productsSeries} />
       </div>
 
       {/* Monthly Overview */}
-      <OverviewChart />
+      <OverviewChart data={overviewSeries} />
 
       {/* Content Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

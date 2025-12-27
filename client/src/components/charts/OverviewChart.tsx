@@ -5,14 +5,8 @@ interface OverviewChartProps {
   data?: Array<{ name: string; engagement: number; products: number; promotions: number }>;
 }
 
-const defaultData = [
-  { name: 'Week 1', engagement: 400, products: 24, promotions: 8 },
-  { name: 'Week 2', engagement: 520, products: 32, promotions: 12 },
-  { name: 'Week 3', engagement: 380, products: 28, promotions: 6 },
-  { name: 'Week 4', engagement: 620, products: 38, promotions: 15 },
-];
-
-const OverviewChart = ({ data = defaultData }: OverviewChartProps) => {
+const OverviewChart = ({ data }: OverviewChartProps) => {
+  const chartData = data && data.length ? data : [];
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -21,9 +15,14 @@ const OverviewChart = ({ data = defaultData }: OverviewChartProps) => {
       className="bg-card rounded-2xl border border-border p-6"
     >
       <h2 className="text-lg font-semibold text-foreground mb-4">Monthly Overview</h2>
+      {!chartData.length ? (
+        <div className="h-[120px] flex items-center justify-center text-muted-foreground text-sm bg-secondary/50 rounded-xl border border-border">
+          No overview data yet.
+        </div>
+      ) : (
       <div className="h-[280px]">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={data} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+          <LineChart data={chartData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
             <XAxis 
               dataKey="name" 
@@ -79,6 +78,7 @@ const OverviewChart = ({ data = defaultData }: OverviewChartProps) => {
           </LineChart>
         </ResponsiveContainer>
       </div>
+      )}
     </motion.div>
   );
 };

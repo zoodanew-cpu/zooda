@@ -1,5 +1,5 @@
 import React from "react";
-import { Promotion } from "./path-to-promotion-service";
+import { Promotion, API_HOST } from "./path-to-promotion-service";
 
 interface PromotionBannerProps {
   promotion: Promotion;
@@ -10,7 +10,7 @@ const PromotionBanner: React.FC<PromotionBannerProps> = ({ promotion, onClaimOff
   const getImageUrl = () => {
     if (!promotion.imageUrl && !promotion.image) return "";
     const url = promotion.imageUrl || promotion.image || "";
-    return url.startsWith("http") ? url : `https://api.zooda.in${url}`;
+    return url.startsWith("http") ? url : `${API_HOST}${url}`;
   };
 
   const getDiscountDisplay = () => {

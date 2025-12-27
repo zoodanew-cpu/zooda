@@ -5,17 +5,8 @@ interface EngagementChartProps {
   data?: Array<{ name: string; engagement: number; posts: number }>;
 }
 
-const defaultData = [
-  { name: 'Mon', engagement: 120, posts: 4 },
-  { name: 'Tue', engagement: 180, posts: 6 },
-  { name: 'Wed', engagement: 150, posts: 5 },
-  { name: 'Thu', engagement: 280, posts: 8 },
-  { name: 'Fri', engagement: 320, posts: 10 },
-  { name: 'Sat', engagement: 250, posts: 7 },
-  { name: 'Sun', engagement: 200, posts: 6 },
-];
-
-const EngagementChart = ({ data = defaultData }: EngagementChartProps) => {
+const EngagementChart = ({ data }: EngagementChartProps) => {
+  const chartData = data && data.length ? data : [];
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -24,9 +15,14 @@ const EngagementChart = ({ data = defaultData }: EngagementChartProps) => {
       className="bg-card rounded-2xl border border-border p-6"
     >
       <h2 className="text-lg font-semibold text-foreground mb-4">Engagement Trends</h2>
+      {!chartData.length ? (
+        <div className="h-[120px] flex items-center justify-center text-muted-foreground text-sm bg-secondary/50 rounded-xl border border-border">
+          No engagement data yet.
+        </div>
+      ) : (
       <div className="h-[280px]">
         <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={data} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+          <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
             <defs>
               <linearGradient id="engagementGradient" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
@@ -67,6 +63,7 @@ const EngagementChart = ({ data = defaultData }: EngagementChartProps) => {
           </AreaChart>
         </ResponsiveContainer>
       </div>
+      )}
     </motion.div>
   );
 };

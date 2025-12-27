@@ -8,6 +8,11 @@ interface PlatformStats {
   totalProducts: number;
   totalPromotions: number;
   totalRevenue: number;
+  visitCounts?: {
+    day: number;
+    week: number;
+    month: number;
+  };
 }
 
 interface AdminOverviewTabProps {
@@ -31,6 +36,21 @@ export function AdminOverviewTab({ stats }: AdminOverviewTabProps) {
     <div className="space-y-8">
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <StatCard
+          title="Website Visits (7d)"
+          value={stats.visitCounts?.week ?? 0}
+          trend="Visits"
+          trendType="positive"
+          trendValue={stats.visitCounts?.day ?? 0}
+          icon={LineChart}
+          iconColor="text-primary"
+          sparklineData={[
+            (stats.visitCounts?.month ?? 0) / 30,
+            (stats.visitCounts?.week ?? 0) / 7,
+            stats.visitCounts?.day ?? 0,
+          ]}
+          delay={0}
+        />
+        <StatCard
           title="Total Businesses"
           value={stats.totalBusinesses}
           trend="Active"
@@ -39,7 +59,7 @@ export function AdminOverviewTab({ stats }: AdminOverviewTabProps) {
           icon={Building2}
           iconColor="text-info"
           sparklineData={[8, 12, 15, 14, 18, 20, 22, 25, 24, 28, 30, stats.totalBusinesses]}
-          delay={0}
+          delay={100}
         />
         <StatCard
           title="Pending Approvals"
@@ -50,7 +70,7 @@ export function AdminOverviewTab({ stats }: AdminOverviewTabProps) {
           icon={Clock}
           iconColor="text-warning"
           sparklineData={[15, 12, 18, 14, 10, 8, 12, 9, 7, 5, 4, stats.pendingApprovals]}
-          delay={100}
+          delay={200}
         />
         <StatCard
           title="Total Posts"
@@ -61,7 +81,7 @@ export function AdminOverviewTab({ stats }: AdminOverviewTabProps) {
           icon={Newspaper}
           iconColor="text-primary"
           sparklineData={[20, 35, 45, 55, 50, 65, 80, 75, 90, 95, 110, stats.totalPosts]}
-          delay={200}
+          delay={300}
         />
         <StatCard
           title="Total Products"
@@ -72,7 +92,7 @@ export function AdminOverviewTab({ stats }: AdminOverviewTabProps) {
           icon={ShoppingBag}
           iconColor="text-success"
           sparklineData={[30, 42, 55, 48, 62, 70, 85, 78, 95, 88, 102, stats.totalProducts]}
-          delay={300}
+          delay={400}
         />
         <StatCard
           title="Active Promotions"
@@ -83,7 +103,7 @@ export function AdminOverviewTab({ stats }: AdminOverviewTabProps) {
           icon={Tag}
           iconColor="text-destructive"
           sparklineData={[5, 8, 6, 10, 12, 9, 14, 11, 15, 13, 16, stats.totalPromotions]}
-          delay={400}
+          delay={500}
         />
         <StatCard
           title="Platform Revenue"
@@ -94,7 +114,7 @@ export function AdminOverviewTab({ stats }: AdminOverviewTabProps) {
           icon={DollarSign}
           iconColor="text-success"
           sparklineData={[1200, 1800, 2200, 2800, 3200, 3800, 4500, 5200, 5800, 6500, 7200, stats.totalRevenue || 8000]}
-          delay={500}
+          delay={600}
         />
       </div>
 

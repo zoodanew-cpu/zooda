@@ -143,11 +143,21 @@ interface Promotion {
   updatedAt?: string;
 }
 
-const API_BASE_URL = "https://api.zooda.in";
+const API_HOST =
+  (import.meta as any)?.env?.VITE_API_BASE ||
+  ((typeof window !== "undefined" &&
+    (window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1"))
+    ? "http://127.0.0.1:5000"
+    : "https://api.zooda.in");
+const API_BASE_URL = `${API_HOST.replace(/\/$/, "")}/api`;
+const API_BASE = API_BASE_URL;
+const TRACKING_API = API_BASE_URL;
+axios.defaults.baseURL = API_BASE_URL;
 
 const getActivePromotions = async (): Promise<Promotion[]> => {
   try {
-    const response = await axios.get(`https://api.zooda.in/api/promotion`);
+    const response = await axios.get(`${API_BASE}/promotion`);
 
     if (response.data.success && Array.isArray(response.data.data)) {
       return response.data.data.map((promo: any) => ({
@@ -175,7 +185,7 @@ const trackPromotionEvent = async (
 ) => {
   if (!promotionId) return;
   try {
-    await axios.post(`${API_BASE_URL}/api/promotion/${promotionId}/track`, {
+    await axios.post(`${API_BASE_URL}/promotion/${promotionId}/track`, {
       type,
     });
   } catch (err) {
@@ -368,7 +378,7 @@ const SearchPage = ({
 
     try {
       setLoading(true);
-      const res = await fetch(`${API_BASE_URL}/api/business/search`);
+      const res = await fetch(`${API_BASE_URL}/business/search`);
       const data = await res.json();
       if (data.success && Array.isArray(data.businesses)) {
         setBusinesses(data.businesses);
@@ -707,7 +717,7 @@ const UserProfilePage = ({
     try {
       setLoading(true);
       const response = await axios.get(
-        `${API_BASE_URL}/api/user/${user._id}/following`
+        `${API_BASE_URL}/user/${user._id}/following`
       );
       const followedIds = response.data.following || [];
       const companies = allCompanies.filter(c =>
@@ -760,7 +770,7 @@ const UserProfilePage = ({
       }
 
       await axios.put(
-        `${API_BASE_URL}/api/user/${user._id}`,
+        `${API_BASE_URL}/user/${user._id}`,
         payload,
         { headers: { "Content-Type": "multipart/form-data" } }
       );
@@ -1418,152 +1428,152 @@ styleSheets.innerText = profilepage;
 document.head.appendChild(styleSheets);
 const PrivacyPolicyPage = () => {
   return (
-      <div className="min-h-screen bg-black px-5 py-8 text-white">
-        <div className="max-w-3xl mx-auto bg-black border border-white/10 rounded-xl p-6 shadow-lg">
+    <div className="min-h-screen bg-black px-5 py-8 text-white">
+      <div className="max-w-3xl mx-auto bg-black border border-white/10 rounded-xl p-6 shadow-lg">
 
-          {/* HEADER */}
-          <header className="mb-6">
-            <h2 className="text-3xl font-extrabold text-green-400">Privacy Policy — Zooda.in</h2>
-            <p className="text-sm text-gray-400 mt-1">Last updated: 20 November 2025</p>
-          </header>
+        {/* HEADER */}
+        <header className="mb-6">
+          <h2 className="text-3xl font-extrabold text-green-400">Privacy Policy — Zooda.in</h2>
+          <p className="text-sm text-gray-400 mt-1">Last updated: 20 November 2025</p>
+        </header>
 
-          {/* MAIN CONTENT */}
-          <section className="space-y-6 text-gray-300 leading-relaxed">
+        {/* MAIN CONTENT */}
+        <section className="space-y-6 text-gray-300 leading-relaxed">
 
-            <div>
-              <h3 className="text-xl font-semibold text-white mb-1">Information We Collect</h3>
-              <p>
-                We collect personal info you provide (name, email, phone, business details),
-                automatic data (IP, device, analytics), and data from third-party sign-ins.
-              </p>
-            </div>
-
-            <div>
-              <h3 className="text-xl font-semibold text-white mb-1">How We Use Your Information</h3>
-              <p>
-                To display listings, improve services, power engagement rankings, enable ads,
-                and provide customer support. We do not sell personal data.
-              </p>
-            </div>
-
-            <div>
-              <h3 className="text-xl font-semibold text-white mb-1">Cookies & Tracking</h3>
-              <p>
-                Cookies are used to keep you logged in and analyze site performance.
-                Disabling cookies may affect certain features.
-              </p>
-            </div>
-
-            <div>
-              <h3 className="text-xl font-semibold text-white mb-1">Third Party Services</h3>
-              <p>
-                We use third-party services for hosting, analytics, and advertising.
-              </p>
-            </div>
-
-            <div>
-              <h3 className="text-xl font-semibold text-white mb-1">Data Rights</h3>
-              <p>
-                You may request access or deletion of your data at:
-                <a href="mailto:zoodanew@gmail.com" className="text-green-400 underline ml-1">
-                  zoodanew@gmail.com
-                </a>
-              </p>
-            </div>
-
-            {/* BUTTONS */}
-            <div className="mt-6 flex flex-wrap gap-3">
-              <a
-                href="/?type=home"
-                className="px-5 py-2 rounded-full bg-green-500 text-black font-semibold hover:bg-green-600 transition"
-              >
-                Back to Home
-              </a>
-
-             
-            </div>
-          </section>
-
-          {/* MOBILE-FRIENDLY EXTENDED SECTION */}
-          <div className="mt-10 border-t border-white/10 pt-6">
-            <h4 className="font-semibold text-white mb-2 text-lg">Detailed Breakdown</h4>
-            <ol className="list-decimal list-inside space-y-2 text-gray-400">
-              <li>Personal info during signup or business listing.</li>
-              <li>Device, IP, and behavioral analytics.</li>
-              <li>Third-party login information.</li>
-            </ol>
-
-            <h4 className="font-semibold mt-6 mb-2 text-white">Sharing & Security</h4>
-            <p className="text-gray-300">
-              Shared only with service providers and legal authorities when required.
-              Protected with SSL, server-level security, and audits.
+          <div>
+            <h3 className="text-xl font-semibold text-white mb-1">Information We Collect</h3>
+            <p>
+              We collect personal info you provide (name, email, phone, business details),
+              automatic data (IP, device, analytics), and data from third-party sign-ins.
             </p>
           </div>
+
+          <div>
+            <h3 className="text-xl font-semibold text-white mb-1">How We Use Your Information</h3>
+            <p>
+              To display listings, improve services, power engagement rankings, enable ads,
+              and provide customer support. We do not sell personal data.
+            </p>
+          </div>
+
+          <div>
+            <h3 className="text-xl font-semibold text-white mb-1">Cookies & Tracking</h3>
+            <p>
+              Cookies are used to keep you logged in and analyze site performance.
+              Disabling cookies may affect certain features.
+            </p>
+          </div>
+
+          <div>
+            <h3 className="text-xl font-semibold text-white mb-1">Third Party Services</h3>
+            <p>
+              We use third-party services for hosting, analytics, and advertising.
+            </p>
+          </div>
+
+          <div>
+            <h3 className="text-xl font-semibold text-white mb-1">Data Rights</h3>
+            <p>
+              You may request access or deletion of your data at:
+              <a href="mailto:zoodanew@gmail.com" className="text-green-400 underline ml-1">
+                zoodanew@gmail.com
+              </a>
+            </p>
+          </div>
+
+          {/* BUTTONS */}
+          <div className="mt-6 flex flex-wrap gap-3">
+            <a
+              href="/?type=home"
+              className="px-5 py-2 rounded-full bg-green-500 text-black font-semibold hover:bg-green-600 transition"
+            >
+              Back to Home
+            </a>
+
+
+          </div>
+        </section>
+
+        {/* MOBILE-FRIENDLY EXTENDED SECTION */}
+        <div className="mt-10 border-t border-white/10 pt-6">
+          <h4 className="font-semibold text-white mb-2 text-lg">Detailed Breakdown</h4>
+          <ol className="list-decimal list-inside space-y-2 text-gray-400">
+            <li>Personal info during signup or business listing.</li>
+            <li>Device, IP, and behavioral analytics.</li>
+            <li>Third-party login information.</li>
+          </ol>
+
+          <h4 className="font-semibold mt-6 mb-2 text-white">Sharing & Security</h4>
+          <p className="text-gray-300">
+            Shared only with service providers and legal authorities when required.
+            Protected with SSL, server-level security, and audits.
+          </p>
         </div>
       </div>
+    </div>
   );
 };
 
 const TermsPage = () => {
   return (
-      <div className="min-h-screen bg-black px-5 py-8 text-white">
-        <div className="max-w-3xl mx-auto bg-black border border-white/10 rounded-xl p-6 shadow-lg">
-          
-          <header className="mb-6">
-            <h2 className="text-3xl font-extrabold text-green-400">Terms & Conditions — Zooda.in</h2>
-            <p className="text-sm text-gray-400 mt-1">Last updated: 20 November 2025</p>
-          </header>
+    <div className="min-h-screen bg-black px-5 py-8 text-white">
+      <div className="max-w-3xl mx-auto bg-black border border-white/10 rounded-xl p-6 shadow-lg">
 
-          <section className="space-y-6 leading-relaxed text-gray-300">
+        <header className="mb-6">
+          <h2 className="text-3xl font-extrabold text-green-400">Terms & Conditions — Zooda.in</h2>
+          <p className="text-sm text-gray-400 mt-1">Last updated: 20 November 2025</p>
+        </header>
 
+        <section className="space-y-6 leading-relaxed text-gray-300">
+
+          <p>
+            By using Zooda.in, you agree to the terms below. Please read carefully before listing
+            or interacting with our platform.
+          </p>
+
+          <div>
+            <h3 className="text-xl font-semibold text-white mb-1">Eligibility & Listings</h3>
             <p>
-              By using Zooda.in, you agree to the terms below. Please read carefully before listing
-              or interacting with our platform.
+              Users must be 18+ and authorized to manage the business listing. You must own the
+              content you upload.
             </p>
+          </div>
 
-            <div>
-              <h3 className="text-xl font-semibold text-white mb-1">Eligibility & Listings</h3>
-              <p>
-                Users must be 18+ and authorized to manage the business listing. You must own the
-                content you upload.
-              </p>
-            </div>
+          <div>
+            <h3 className="text-xl font-semibold text-white mb-1">Engagement-Based Ranking</h3>
+            <p>
+              Listings are ranked based on engagement such as likes, comments, and shares.
+            </p>
+          </div>
 
-            <div>
-              <h3 className="text-xl font-semibold text-white mb-1">Engagement-Based Ranking</h3>
-              <p>
-                Listings are ranked based on engagement such as likes, comments, and shares.
-              </p>
-            </div>
+          <div>
+            <h3 className="text-xl font-semibold text-white mb-1">Advertising & Payments</h3>
+            <p>
+              Paid promotions follow advertising policies. Refund eligibility depends on internal review.
+            </p>
+          </div>
 
-            <div>
-              <h3 className="text-xl font-semibold text-white mb-1">Advertising & Payments</h3>
-              <p>
-                Paid promotions follow advertising policies. Refund eligibility depends on internal review.
-              </p>
-            </div>
+          <div>
+            <h3 className="text-xl font-semibold text-white mb-1">User Conduct</h3>
+            <p>
+              Manipulation of rankings using bots or fake accounts is prohibited and may lead to suspension.
+            </p>
+          </div>
 
-            <div>
-              <h3 className="text-xl font-semibold text-white mb-1">User Conduct</h3>
-              <p>
-                Manipulation of rankings using bots or fake accounts is prohibited and may lead to suspension.
-              </p>
-            </div>
+          <div className="mt-6 flex flex-wrap gap-3">
+            <a
+              href="/?type=home"
+              className="px-5 py-2 rounded-full bg-green-500 text-black font-semibold hover:bg-green-600 transition"
+            >
+              Browse Listings
+            </a>
 
-            <div className="mt-6 flex flex-wrap gap-3">
-              <a
-                href="/?type=home"
-                className="px-5 py-2 rounded-full bg-green-500 text-black font-semibold hover:bg-green-600 transition"
-              >
-                Browse Listings
-              </a>
 
-           
-            </div>
+          </div>
 
-          </section>
-        </div>
+        </section>
       </div>
+    </div>
   );
 };
 const AboutPage = () => {
@@ -1712,7 +1722,7 @@ const CompanyListItem = ({
       if (user?._id && company._id) {
         try {
           const response = await axios.get(
-            `${API_BASE_URL}/api/follow/${company._id}/status/${user._id}`
+            `${API_BASE_URL}/follow/${company._id}/status/${user._id}`
           );
           if (response.data.success) {
             setIsFollowing(response.data.isFollowing);
@@ -1741,7 +1751,7 @@ const CompanyListItem = ({
 
     try {
       const response = await axios.post(
-        `${API_BASE_URL}/api/follow/${company._id}`,
+        `${API_BASE_URL}/follow/${company._id}`,
         { userId: user._id }
       );
       if (response.data.success) {
@@ -1769,7 +1779,7 @@ const CompanyListItem = ({
       <div className="company-row single-line">
         <img src={company.logoUrl} alt="Logo" className="company-logo" />
         <div className="company-info">
-          
+
           <h2 id={`company-name-${company.rank}`} className="company-name">
             {company.name}
           </h2>
@@ -1777,17 +1787,17 @@ const CompanyListItem = ({
 
           <div className="company-stats">
             {/* ✅ Always show correct follower count */}
-           <span>{Number(company.followers) && Number(company.followers) > 0 ? Number(company.followers) : 0} Followers</span>
+            <span>{Number(company.followers) && Number(company.followers) > 0 ? Number(company.followers) : 0} Followers</span>
 
-{company.engagementRate > 0 ? (
-  <div className="stat-item">
-    <span className="stat-label">{company.engagementRate}%</span>
-  </div>
-) : (
-  <div className="stat-item">
-    <span className="stat-label">NEW</span>
-  </div>
-)}
+            {company.engagementRate > 0 ? (
+              <div className="stat-item">
+                <span className="stat-label">{company.engagementRate}%</span>
+              </div>
+            ) : (
+              <div className="stat-item">
+                <span className="stat-label">NEW</span>
+              </div>
+            )}
 
             <button className="visit-btn" onClick={handleVisit}>
               Visit site
@@ -1839,9 +1849,9 @@ const CompanyListPage = ({
   // ✅ Fetch categories from backend
   const fetchCategories = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/admin/categories`);
+      const response = await fetch(`${API_BASE_URL}/admin/categories`);
       const data = await response.json();
-      
+
       if (Array.isArray(data)) {
         // Extract category names from the response
         const categoryNames = data.map((cat: any) => cat.name);
@@ -1868,9 +1878,9 @@ const CompanyListPage = ({
     }
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/admin/categories`);
+      const response = await fetch(`${API_BASE_URL}/admin/categories`);
       const data = await response.json();
-      
+
       let categoriesData: any[] = [];
       if (Array.isArray(data)) {
         categoriesData = data;
@@ -1880,7 +1890,7 @@ const CompanyListPage = ({
 
       // Find the selected category and get its subcategories
       const selectedCat = categoriesData.find((cat: any) => cat.name === category);
-      
+
       if (selectedCat && Array.isArray(selectedCat.subcategories)) {
         const subcategoryNames = selectedCat.subcategories.map((sub: any) => sub.name);
         setSubcategories(["All", ...subcategoryNames]);
@@ -1934,7 +1944,7 @@ const CompanyListPage = ({
     const fetchAllCompanies = async () => {
       try {
         setLoading(true);
-        const response = await fetch(`${API_BASE_URL}/api/business/all`);
+        const response = await fetch(`${API_BASE_URL}/business/all`);
         const data = await response.json();
 
         if (Array.isArray(data)) {
@@ -1942,13 +1952,13 @@ const CompanyListPage = ({
             data.map(async (item, index) => {
               try {
                 const postsResponse = await fetch(
-                  `${API_BASE_URL}/api/post/${item._id}`
+                  `${API_BASE_URL}/post/${item._id}`
                 );
                 const postsData = await postsResponse.json();
                 const posts = postsData.posts || [];
 
                 const productsResponse = await fetch(
-                  `${API_BASE_URL}/api/product/${item._id}`
+                  `${API_BASE_URL}/product/${item._id}`
                 );
                 const productsData = await productsResponse.json();
                 const products = productsData.products || [];
@@ -2489,9 +2499,9 @@ const MobileMenu = ({
     <div className="mobile-menu-overlay" onClick={onClose}>
       <div className="mobile-menu" onClick={(e) => e.stopPropagation()}>
         <div className="mobile-menu-header">
-           <div className="header-logo" aria-label="Zetova logo">
-        <img src={logoUrl} alt="Logo" className="logo-image" />
-      </div>
+          <div className="header-logo" aria-label="Zetova logo">
+            <img src={logoUrl} alt="Logo" className="logo-image" />
+          </div>
           <button onClick={onClose} className="mobile-menu-close">
             <span className="material-icons">close</span>
           </button>
@@ -2500,9 +2510,8 @@ const MobileMenu = ({
         <nav className="mobile-menu-nav">
           <a
             href="#"
-            className={`mobile-menu-item ${
-              activePage === "Home" ? "active" : ""
-            }`}
+            className={`mobile-menu-item ${activePage === "Home" ? "active" : ""
+              }`}
             onClick={(e) => {
               e.preventDefault();
               handleNavClick("Home");
@@ -2513,9 +2522,8 @@ const MobileMenu = ({
           </a>
           <a
             href="#"
-            className={`mobile-menu-item ${
-              activePage === "About" ? "active" : ""
-            }`}
+            className={`mobile-menu-item ${activePage === "About" ? "active" : ""
+              }`}
             onClick={(e) => {
               e.preventDefault();
               handleNavClick("About");
@@ -2526,9 +2534,8 @@ const MobileMenu = ({
           </a>
           <a
             href="#"
-            className={`mobile-menu-item ${
-              activePage === "Posts" ? "active" : ""
-            }`}
+            className={`mobile-menu-item ${activePage === "Posts" ? "active" : ""
+              }`}
             onClick={(e) => {
               e.preventDefault();
               handleNavClick("Posts");
@@ -2540,9 +2547,8 @@ const MobileMenu = ({
           {user?.isLoggedIn && (
             <a
               href="#"
-              className={`mobile-menu-item ${
-                activePage === "Profile" ? "active" : ""
-              }`}
+              className={`mobile-menu-item ${activePage === "Profile" ? "active" : ""
+                }`}
               onClick={(e) => {
                 e.preventDefault();
                 handleProfileClick();
@@ -2609,15 +2615,15 @@ const AllPostsPage = ({ onSelectPost, user, onLoginRequest }: AllPostsPageProps)
       setPosts([]);
       return;
     }
-    
+
     try {
       setLoading(true);
       setError("");
 
       const endpoint =
         activeTab === "Following"
-          ? `https://api.zooda.in/api/posts/following/${user._id}`
-          : `https://api.zooda.in/api/posts/unfollowed/${user._id}`;
+          ? `${API_BASE}/posts/following/${user._id}`
+          : `${API_BASE}/posts/unfollowed/${user._id}`;
 
       console.log('Fetching posts from:', endpoint);
       const response = await axios.get(endpoint);
@@ -2635,34 +2641,32 @@ const AllPostsPage = ({ onSelectPost, user, onLoginRequest }: AllPostsPageProps)
               `https://picsum.photos/600/400?random=${i}`;
 
             if (!imageUrl.startsWith("http")) {
-              imageUrl = `https://api.zooda.in${
-                imageUrl.startsWith("/") ? "" : "/"
-              }${imageUrl}`;
+              imageUrl = `${API_HOST}${imageUrl.startsWith("/") ? "" : "/"
+                }${imageUrl}`;
             }
 
             // Fetch complete company details for each post
             let company = null;
             const companyId = post.business?._id || post.business;
-            
+
             if (companyId) {
               try {
                 const companyResponse = await axios.get(
-                  `https://api.zooda.in/api/companies/${companyId}`
+                  `${API_BASE}/companies/${companyId}`
                 );
                 if (companyResponse.data.success) {
                   company = companyResponse.data.company;
-                  
+
                   // Process company logo URL
                   if (company.logoUrl) {
                     let logoUrl = company.logoUrl;
                     if (!logoUrl.startsWith("http")) {
-                      logoUrl = `https://api.zooda.in${
-                        logoUrl.startsWith("/") ? "" : "/"
-                      }${logoUrl}`;
+                      logoUrl = `${API_HOST}${logoUrl.startsWith("/") ? "" : "/"
+                        }${logoUrl}`;
                     }
                     company.logoUrl = logoUrl;
                   }
-                  
+
                   // Generate username from businessName
                   if (company.businessName) {
                     company.username = company.businessName.toLowerCase().replace(/[\s.]/g, "_");
@@ -2690,10 +2694,10 @@ const AllPostsPage = ({ onSelectPost, user, onLoginRequest }: AllPostsPageProps)
             if (user?._id && post._id) {
               try {
                 const likeResponse = await axios.get(
-                  `https://api.zooda.in/api/post/${post._id}/like-status/${user._id}`
+                  `${API_BASE}/post/${post._id}/like-status/${user._id}`
                 );
                 console.log('Like status response for post', post._id, ':', likeResponse.data);
-                
+
                 if (likeResponse.data.success !== false) {
                   isLiked = likeResponse.data.isLiked || false;
                 }
@@ -2755,7 +2759,7 @@ const AllPostsPage = ({ onSelectPost, user, onLoginRequest }: AllPostsPageProps)
 
     try {
       console.log('Liking post:', postId, 'by user:', user._id);
-      
+
       // Create optimistic update first
       const updatedPosts = [...posts];
       const post = updatedPosts[postIndex];
@@ -2773,7 +2777,7 @@ const AllPostsPage = ({ onSelectPost, user, onLoginRequest }: AllPostsPageProps)
 
       // Make API call
       const response = await axios.post(
-        `https://api.zooda.in/api/post/${postId}/like`,
+        `${API_BASE}/post/${postId}/like`,
         {
           userId: user._id,
         }
@@ -2792,7 +2796,7 @@ const AllPostsPage = ({ onSelectPost, user, onLoginRequest }: AllPostsPageProps)
           likes: response.data.likesCount // Keep for backward compatibility
         };
         setPosts(finalUpdatedPosts);
-        
+
         console.log('Post updated with server response:', finalUpdatedPosts[postIndex]);
       } else {
         // Server returned error, revert optimistic update
@@ -2800,28 +2804,28 @@ const AllPostsPage = ({ onSelectPost, user, onLoginRequest }: AllPostsPageProps)
         revertedPosts[postIndex] = {
           ...revertedPosts[postIndex],
           isLiked: !revertedPosts[postIndex].isLiked,
-          likesCount: revertedPosts[postIndex].isLiked 
-            ? (revertedPosts[postIndex].likesCount || 0) - 1 
+          likesCount: revertedPosts[postIndex].isLiked
+            ? (revertedPosts[postIndex].likesCount || 0) - 1
             : (revertedPosts[postIndex].likesCount || 0) + 1,
-          likes: revertedPosts[postIndex].isLiked 
-            ? (revertedPosts[postIndex].likes || 0) - 1 
+          likes: revertedPosts[postIndex].isLiked
+            ? (revertedPosts[postIndex].likes || 0) - 1
             : (revertedPosts[postIndex].likes || 0) + 1
         };
         setPosts(revertedPosts);
-        
+
         console.error("Server returned error for like:", response.data.message);
         alert(response.data.message || "Failed to like post");
       }
 
     } catch (err: any) {
       console.error("Error liking post:", err);
-      
+
       // Revert optimistic update on error
       const revertedPosts = [...posts];
       const currentPost = revertedPosts[postIndex];
       const currentLikesCount = currentPost.likesCount || 0;
       const currentIsLiked = currentPost.isLiked;
-      
+
       revertedPosts[postIndex] = {
         ...currentPost,
         isLiked: !currentIsLiked,
@@ -2829,7 +2833,7 @@ const AllPostsPage = ({ onSelectPost, user, onLoginRequest }: AllPostsPageProps)
         likes: currentIsLiked ? currentLikesCount - 1 : currentLikesCount + 1
       };
       setPosts(revertedPosts);
-      
+
       alert(err.response?.data?.message || "Failed to like post");
     }
   };
@@ -2845,9 +2849,9 @@ const AllPostsPage = ({ onSelectPost, user, onLoginRequest }: AllPostsPageProps)
 
     try {
       console.log('Sending comment for post:', postId, 'by user:', user._id);
-      
+
       const response = await axios.post(
-        `https://api.zooda.in/api/post/${postId}/comment`,
+        `${API_BASE}/post/${postId}/comment`,
         {
           text: commentText,
           userId: user._id,
@@ -2866,22 +2870,22 @@ const AllPostsPage = ({ onSelectPost, user, onLoginRequest }: AllPostsPageProps)
         };
         setPosts(updatedPosts);
 
-        return { 
-          success: true, 
+        return {
+          success: true,
           comment: response.data.comment,
           commentsCount: response.data.commentsCount
         };
       } else {
-        return { 
-          success: false, 
-          error: response.data.message || "Failed to post comment" 
+        return {
+          success: false,
+          error: response.data.message || "Failed to post comment"
         };
       }
     } catch (err: any) {
       console.error("Error commenting:", err);
-      return { 
-        success: false, 
-        error: err.response?.data?.message || err.message || "Failed to post comment" 
+      return {
+        success: false,
+        error: err.response?.data?.message || err.message || "Failed to post comment"
       };
     }
   };
@@ -2919,8 +2923,8 @@ const AllPostsPage = ({ onSelectPost, user, onLoginRequest }: AllPostsPageProps)
           <div className="login-prompt-content">
             <h2>Join the Community</h2>
             <p>Login to see posts from businesses you follow and discover new ones!</p>
-            <button 
-              onClick={handleLoginRequest} 
+            <button
+              onClick={handleLoginRequest}
               className="login-btn-primary"
             >
               Login to Continue
@@ -2989,8 +2993,8 @@ const AllPostsPage = ({ onSelectPost, user, onLoginRequest }: AllPostsPageProps)
               Unfollowing
             </button>
           </div>
-          <button 
-            onClick={refreshPosts} 
+          <button
+            onClick={refreshPosts}
             className="refresh-btn"
             style={{
               position: 'absolute',
@@ -3043,20 +3047,20 @@ interface PostGridItemProps {
   postIndex: number;
   onSelectPost: (post: Post) => void;
   onLike: (postId: string, postIndex: number) => void;
-  onComment: (postId: string, postIndex: number, commentText: string) => Promise<{success: boolean; error?: string}>;
+  onComment: (postId: string, postIndex: number, commentText: string) => Promise<{ success: boolean; error?: string }>;
   onShare: (post: Post) => void;
   user?: User;
   onLoginRequest?: () => void;
   onRefreshPosts?: () => void;
 }
 
-const PostGridItem = ({ 
-  post, 
-  postIndex, 
-  onSelectPost, 
-  onLike, 
+const PostGridItem = ({
+  post,
+  postIndex,
+  onSelectPost,
+  onLike,
   onComment,
-  onShare, 
+  onShare,
   user,
   onLoginRequest,
   onRefreshPosts
@@ -3090,10 +3094,10 @@ const PostGridItem = ({
       try {
         console.log('Fetching comments for post:', post._id);
         const response = await axios.get(
-          `https://api.zooda.in/api/post/${post._id}/comments`
+          `${API_BASE}/post/${post._id}/comments`
         );
         console.log('Comments response:', response.data);
-        
+
         if (response.data.success !== false) {
           setPostComments(response.data.comments || []);
         } else {
@@ -3132,7 +3136,7 @@ const PostGridItem = ({
         // Refresh comments after successful comment
         try {
           const response = await axios.get(
-            `https://api.zooda.in/api/post/${post._id}/comments`
+            `${API_BASE}/post/${post._id}/comments`
           );
           if (response.data.success !== false) {
             setPostComments(response.data.comments || []);
@@ -3140,7 +3144,7 @@ const PostGridItem = ({
         } catch (err) {
           console.error("Error refreshing comments:", err);
         }
-        
+
         // Refresh posts to update comment count globally
         if (onRefreshPosts) {
           setTimeout(() => onRefreshPosts(), 500);
@@ -3171,8 +3175,8 @@ const PostGridItem = ({
         <div className="business-info">
           <div className="business-avatar">
             {post.company?.logoUrl ? (
-              <img 
-                src={post.company.logoUrl} 
+              <img
+                src={post.company.logoUrl}
                 alt={companyName}
                 className="business-logo"
               />
@@ -3190,11 +3194,11 @@ const PostGridItem = ({
           </div>
         </div>
         {/* Show stats in header */}
-       
+
       </div>
 
       {/* Post Image */}
-      <div 
+      <div
         className="post-image-container"
         onClick={() => onSelectPost(post)}
       >
@@ -3214,7 +3218,7 @@ const PostGridItem = ({
         <div className="action-error">
           <span>{actionError}</span>
           {onLoginRequest && (
-            <button 
+            <button
               onClick={onLoginRequest}
               className="login-link-btn"
             >
@@ -3236,14 +3240,14 @@ const PostGridItem = ({
               {post.isLiked ? "favorite" : "favorite_border"}
             </span>
           </button>
-          <button 
+          <button
             className="comment-btn"
             onClick={toggleComments}
             title="Comment"
           >
             <span className="material-icons">chat_bubble_outline</span>
           </button>
-          <button 
+          <button
             className="share-btn"
             onClick={handleShareWithLoginCheck}
             title="Share"
@@ -3262,12 +3266,12 @@ const PostGridItem = ({
         )}
 
         <div className="post-caption">
-          <strong className="username">@{companyUsername}</strong> 
+          <strong className="username">@{companyUsername}</strong>
           <span className="caption-text">{post.content || post.caption}</span>
         </div>
 
         {commentsCount > 0 && (
-          <button 
+          <button
             className="view-comments"
             onClick={toggleComments}
             disabled={isLoadingComments}
@@ -3283,7 +3287,7 @@ const PostGridItem = ({
               <div className="login-prompt-comments">
                 <p>Please login to view and post comments</p>
                 {onLoginRequest && (
-                  <button 
+                  <button
                     onClick={onLoginRequest}
                     className="login-btn-small"
                   >
@@ -3309,7 +3313,7 @@ const PostGridItem = ({
                         </div>
                       ))
                     )}
-                    
+
                     {/* Comment Input */}
                     <form onSubmit={handleCommentSubmit} className="comment-form">
                       <input
@@ -3824,13 +3828,13 @@ const PostDetailPage = ({ data, onBack, user, onLoginRequest }: PostDetailPagePr
   const fetchPostDetails = async (postId: string) => {
     try {
       setLoading(true);
-      const response = await axios.get(`${API_BASE_URL}/api/post/${postId}`);
+      const response = await axios.get(`${API_BASE_URL}/post/${postId}`);
       if (response.data.success) {
         setPost(response.data.post);
-        
+
         // If company data is incomplete, fetch it too
         if (!data.company._id && response.data.post.businessId) {
-          const companyResponse = await axios.get(`${API_BASE_URL}/api/companies/${response.data.post.businessId}`);
+          const companyResponse = await axios.get(`${API_BASE_URL}/companies/${response.data.post.businessId}`);
           if (companyResponse.data.success) {
             setCompany(companyResponse.data.company);
           }
@@ -3868,10 +3872,10 @@ const PostDetailPage = ({ data, onBack, user, onLoginRequest }: PostDetailPagePr
         <h2>Post</h2>
       </header>
       <main className="post-detail-content">
-        <PostItem 
-          post={post} 
-          company={company} 
-          user={user} 
+        <PostItem
+          post={post}
+          company={company}
+          user={user}
           onLoginRequest={onLoginRequest}
         />
       </main>
@@ -3920,7 +3924,7 @@ const ProfilePage = ({
 
       try {
         const res = await axios.get(
-          `${API_BASE_URL}/api/follow/${company._id}/status/${user._id}`
+          `${API_BASE_URL}/follow/${company._id}/status/${user._id}`
         );
         setIsFollowing(res.data.isFollowing);
       } catch (err) {
@@ -3940,8 +3944,8 @@ const ProfilePage = ({
         setLoading(true);
 
         const [postsRes, productsRes] = await Promise.all([
-          fetch(`${API_BASE_URL}/api/post/${company._id}`),
-          fetch(`${API_BASE_URL}/api/product/${company._id}`),
+          fetch(`${API_BASE_URL}/post/${company._id}`),
+          fetch(`${API_BASE_URL}/product/${company._id}`),
         ]);
 
         if (!postsRes.ok || !productsRes.ok) {
@@ -4032,7 +4036,7 @@ const ProfilePage = ({
 
     try {
       const res = await axios.post(
-        `${API_BASE_URL}/api/follow/${company._id}`,
+        `${API_BASE_URL}/follow/${company._id}`,
         { userId: user._id }
       );
 
@@ -4077,7 +4081,7 @@ const ProfilePage = ({
       setPosts(updatedPosts);
 
       await axios.post(
-        `https://api.zooda.in/api/post/${postId}/like`,
+        `${API_BASE}/post/${postId}/like`,
         { userId: user._id }
       );
     } catch (err) {
@@ -4099,7 +4103,7 @@ const ProfilePage = ({
 
     try {
       const res = await axios.post(
-        `https://api.zooda.in/api/post/${postId}/comment`,
+        `${API_BASE}/post/${postId}/comment`,
         {
           text: commentText,
           userId: user._id,
@@ -4126,7 +4130,7 @@ const ProfilePage = ({
           text: post.content,
           url: window.location.href,
         });
-      } catch {}
+      } catch { }
     } else {
       navigator.clipboard.writeText(window.location.href);
       alert("Link copied!");
@@ -4145,10 +4149,10 @@ const ProfilePage = ({
     activeProductTag === "All"
       ? products
       : products.filter((p) =>
-          (p.tags || [])
-            .map((t) => t.toLowerCase())
-            .includes(activeProductTag.toLowerCase())
-        );
+        (p.tags || [])
+          .map((t) => t.toLowerCase())
+          .includes(activeProductTag.toLowerCase())
+      );
 
   // -----------------------------------------------------------
   // RENDER
@@ -4289,7 +4293,7 @@ const ProfilePage = ({
             </div>
 
             {/* Always show engagement rate */}
-           
+
           </div>
         </section>
 
@@ -4326,9 +4330,8 @@ const ProfilePage = ({
                   {postCategories.map((category) => (
                     <button
                       key={category}
-                      className={`tag-button ${
-                        activePostCategory === category ? "active" : ""
-                      }`}
+                      className={`tag-button ${activePostCategory === category ? "active" : ""
+                        }`}
                       onClick={() => setActivePostCategory(category)}
                     >
                       {category}
@@ -4367,8 +4370,8 @@ const ProfilePage = ({
                               display: "block"
                             }}
                             onError={(e) =>
-                              (e.currentTarget.src =
-                                `https://picsum.photos/400/400?random=${post._id}`)
+                            (e.currentTarget.src =
+                              `https://picsum.photos/400/400?random=${post._id}`)
                             }
                           />
                         </div>
@@ -4388,9 +4391,8 @@ const ProfilePage = ({
                   {productTags.map((tag) => (
                     <button
                       key={tag}
-                      className={`tag-button ${
-                        activeProductTag === tag ? "active" : ""
-                      }`}
+                      className={`tag-button ${activeProductTag === tag ? "active" : ""
+                        }`}
                       onClick={() => setActiveProductTag(tag)}
                     >
                       {tag}
@@ -4411,8 +4413,8 @@ const ProfilePage = ({
                             src={product.image?.url || product.imageUrl}
                             className="product-image"
                             onError={(e) =>
-                              (e.currentTarget.src =
-                                `https://picsum.photos/400/400?random=${product._id}`)
+                            (e.currentTarget.src =
+                              `https://picsum.photos/400/400?random=${product._id}`)
                             }
                           />
 
@@ -4435,7 +4437,7 @@ const ProfilePage = ({
               <div className="post-detail-with-products">
                 {/* Back Button */}
                 <div className="back-button-container">
-                  <button 
+                  <button
                     className="back-button"
                     onClick={handleClosePostDetail}
                   >
@@ -4451,7 +4453,7 @@ const ProfilePage = ({
                   <PostGridItem
                     post={selectedPost}
                     postIndex={posts.findIndex(p => p._id === selectedPost._id)}
-                    onSelectPost={() => {}}
+                    onSelectPost={() => { }}
                     onLike={handleLike}
                     onComment={handleComment}
                     onShare={handleShare}
@@ -4525,18 +4527,18 @@ const Footer = ({ companyName = "zooda" }: FooterProps) => {
                 <span className="text-xl font-semibold">{companyName}</span>
               </div>
               <div className="mt-10 text-center">
-  <p className="text-gray-300 text-sm md:text-base">
-    Your website deserves to be seen.
-  </p>
-  <p className="text-gray-300 text-sm md:text-base">
-    Your business deserves to stand out.
-  </p>
-  <p className="text-green-400 font-semibold text-base md:text-lg mt-1">
-    Where Engagement Builds Visibility.
-  </p>
-</div>
+                <p className="text-gray-300 text-sm md:text-base">
+                  Your website deserves to be seen.
+                </p>
+                <p className="text-gray-300 text-sm md:text-base">
+                  Your business deserves to stand out.
+                </p>
+                <p className="text-green-400 font-semibold text-base md:text-lg mt-1">
+                  Where Engagement Builds Visibility.
+                </p>
+              </div>
             </div>
-{/* TAGLINE */}
+            {/* TAGLINE */}
 
 
             {/* MIDDLE */}
@@ -4664,7 +4666,7 @@ const LoginModal = ({ isOpen, onClose, onLogin, onOpenRegister }: LoginModalProp
     setLoading(true);
 
     try {
-      const response = await axios.post(`${API_BASE_URL}/api/auth/login`, {
+      const response = await axios.post(`${API_BASE_URL}/auth/login`, {
         email,
         password,
       });
@@ -4697,7 +4699,7 @@ const LoginModal = ({ isOpen, onClose, onLogin, onOpenRegister }: LoginModalProp
     setLoading(true);
 
     try {
-      const res = await axios.post(`${API_BASE_URL}/api/auth/check-email`, {
+      const res = await axios.post(`${API_BASE_URL}/auth/check-email`, {
         email: forgotEmail,
       });
 
@@ -4721,7 +4723,7 @@ const LoginModal = ({ isOpen, onClose, onLogin, onOpenRegister }: LoginModalProp
     setLoading(true);
 
     try {
-      await axios.post(`${API_BASE_URL}/api/auth/reset-password`, {
+      await axios.post(`${API_BASE_URL}/auth/reset-password`, {
         email: forgotEmail,
         newPassword,
       });
@@ -4933,7 +4935,7 @@ const RegisterModal = ({
   const fetchCategories = async () => {
     try {
       setLoading(true);
-      const res = await axios.get(`${API_BASE_URL}/api/admin/categories`);
+      const res = await axios.get(`${API_BASE_URL}/admin/categories`);
       setCategories(res.data);
     } catch {
       setError("Failed to load categories");
@@ -4965,7 +4967,7 @@ const RegisterModal = ({
     setRegisterLoading(true);
 
     try {
-      const res = await axios.post(`${API_BASE_URL}/api/auth/register`, {
+      const res = await axios.post(`${API_BASE_URL}/auth/register`, {
         name,
         email,
         mobile,
@@ -5095,9 +5097,8 @@ const RegisterModal = ({
                     key={cat._id}
                     type="button"
                     disabled={registerLoading}
-                    className={`category-btn ${
-                      interests.includes(cat.name) ? "active" : ""
-                    }`}
+                    className={`category-btn ${interests.includes(cat.name) ? "active" : ""
+                      }`}
                     onClick={() => toggleInterest(cat.name)}
                   >
                     {cat.name}
@@ -5188,7 +5189,7 @@ const App = () => {
   const [allPromotions, setAllPromotions] = useState<Promotion[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchLoading, setSearchLoading] = useState(false);
-  
+
   // Add selectedPost state to store both post and company data
   const [selectedPost, setSelectedPost] = useState<{ post: Post; company: Company } | null>(null);
 
@@ -5196,8 +5197,19 @@ const App = () => {
   const isSearchActive = routeParams.type === 'search';
   const selectedCompanyId = routeParams.type === 'company' ? routeParams.id : null;
   const selectedPostId = routeParams.type === 'post' ? routeParams.id : null;
-  
+
   const selectedCompany = allCompanies.find(c => c._id === selectedCompanyId) || null;
+
+  // Track visit when the client app loads or user status changes
+  useEffect(() => {
+    const payload: any = { path: window.location.pathname };
+    if (user?.isLoggedIn && user._id) {
+      payload.clientId = user._id;
+    } else {
+      payload.anonymous = true;
+    }
+    axios.post(`${TRACKING_API}/visits`, payload).catch(() => { });
+  }, [user]);
 
   // Load user from localStorage
   useEffect(() => {
@@ -5236,15 +5248,15 @@ const App = () => {
         try {
           console.log("Loading post data for:", selectedPostId);
           // Fetch post details
-          const postResponse = await axios.get(`${API_BASE_URL}/api/post/${selectedPostId}`);
+          const postResponse = await axios.get(`${API_BASE_URL}/post/${selectedPostId}`);
           if (postResponse.data.success) {
             const post = postResponse.data.post;
             console.log("Post data loaded:", post);
-            
+
             // Fetch company details for the post
             let company: Company;
             if (post.businessId) {
-              const companyResponse = await axios.get(`${API_BASE_URL}/api/companies/${post.businessId}`);
+              const companyResponse = await axios.get(`${API_BASE_URL}/companies/${post.businessId}`);
               company = companyResponse.data.company;
             } else {
               // Fallback company data
@@ -5264,7 +5276,7 @@ const App = () => {
                 engagementRate: '0.0'
               };
             }
-            
+
             setSelectedPost({ post, company });
           }
         } catch (err) {
@@ -5283,7 +5295,7 @@ const App = () => {
     const loadSearchData = async () => {
       try {
         const companiesResponse = await fetch(
-          `${API_BASE_URL}/api/business/all`
+          `${API_BASE_URL}/business/all`
         );
         const companiesData = await companiesResponse.json();
 
@@ -5292,13 +5304,13 @@ const App = () => {
             companiesData.map(async (item, index) => {
               try {
                 const productsResponse = await fetch(
-                  `${API_BASE_URL}/api/product/${item._id}`
+                  `${API_BASE_URL}/product/${item._id}`
                 );
                 const productsData = await productsResponse.json();
                 const products = productsData.products || [];
 
                 const postsResponse = await fetch(
-                  `${API_BASE_URL}/api/post/${item._id}`
+                  `${API_BASE_URL}/post/${item._id}`
                 );
                 const postsData = await postsResponse.json();
                 const posts = postsData.posts || [];
@@ -5520,10 +5532,9 @@ const App = () => {
       window.open(promotion.targetUrl, "_blank");
     }
     alert(
-      `Offer claimed! ${
-        promotion.discountCode
-          ? `Use code: ${promotion.discountCode}`
-          : promotion.couponCode
+      `Offer claimed! ${promotion.discountCode
+        ? `Use code: ${promotion.discountCode}`
+        : promotion.couponCode
           ? `Use code: ${promotion.couponCode}`
           : ""
       }`
@@ -5535,16 +5546,16 @@ const App = () => {
 
     if (selectedPostId)
       return
-       <Header
-        user={user || undefined}
-        onLogin={() => setShowLoginModal(true)}
-        onLogout={handleLogout}
-        onRegister={() => setShowRegisterModal(true)}
-        onMenuToggle={handleMenuToggle}
-        isMenuOpen={isMobileMenuOpen}
-        onSearchClick={handleSearchClick}
-        onProfileClick={handleProfileClick}
-      />;
+    <Header
+      user={user || undefined}
+      onLogin={() => setShowLoginModal(true)}
+      onLogout={handleLogout}
+      onRegister={() => setShowRegisterModal(true)}
+      onMenuToggle={handleMenuToggle}
+      isMenuOpen={isMobileMenuOpen}
+      onSearchClick={handleSearchClick}
+      onProfileClick={handleProfileClick}
+    />;
     if (selectedCompany)
       return <Header
         user={user || undefined}
@@ -5558,16 +5569,16 @@ const App = () => {
       />;
     if (routeParams.type === "profile")
       return (
-       <Header
-        user={user || undefined}
-        onLogin={() => setShowLoginModal(true)}
-        onLogout={handleLogout}
-        onRegister={() => setShowRegisterModal(true)}
-        onMenuToggle={handleMenuToggle}
-        isMenuOpen={isMobileMenuOpen}
-        onSearchClick={handleSearchClick}
-        onProfileClick={handleProfileClick}
-      />
+        <Header
+          user={user || undefined}
+          onLogin={() => setShowLoginModal(true)}
+          onLogout={handleLogout}
+          onRegister={() => setShowRegisterModal(true)}
+          onMenuToggle={handleMenuToggle}
+          isMenuOpen={isMobileMenuOpen}
+          onSearchClick={handleSearchClick}
+          onProfileClick={handleProfileClick}
+        />
       );
     if (routeParams.type === "about")
       return <Header
@@ -5581,7 +5592,7 @@ const App = () => {
         onProfileClick={handleProfileClick}
       />;
     if (routeParams.type === "posts")
-      return<Header
+      return <Header
         user={user || undefined}
         onLogin={() => setShowLoginModal(true)}
         onLogout={handleLogout}
@@ -5606,105 +5617,105 @@ const App = () => {
     );
   };
 
-const renderPage = () => {
-  console.log("Current route:", routeParams.type, "selectedPostId:", selectedPostId, "selectedPost:", selectedPost);
+  const renderPage = () => {
+    console.log("Current route:", routeParams.type, "selectedPostId:", selectedPostId, "selectedPost:", selectedPost);
 
-  if (isSearchActive) {
-    return (
-      <SearchPage
-        searchQuery={searchQuery}
-        searchResults={searchResults}
-        onSelectSearchResult={handleSelectSearchResult}
-        onSearchChange={handleSearch}
-        onBack={handleSearchBack}
-        loading={searchLoading}
-      />
-    );
-  }
-
-  if (selectedPostId) {
-    if (selectedPost) {
+    if (isSearchActive) {
       return (
-        <PostDetailPage
-          data={selectedPost}
-          onBack={() => window.history.back()}
-          user={user || undefined}
-          onLoginRequest={() => setShowLoginModal(true)}
+        <SearchPage
+          searchQuery={searchQuery}
+          searchResults={searchResults}
+          onSelectSearchResult={handleSelectSearchResult}
+          onSearchChange={handleSearch}
+          onBack={handleSearchBack}
+          loading={searchLoading}
         />
       );
-    } else {
-      return <div className="loading-container"><p>Loading post...</p></div>;
     }
-  }
 
-  if (selectedCompany) {
-    return (
-      <>
-      
-      <ProfilePage
-        company={selectedCompany}
-        onSelectPost={handleSelectPost}
-        user={user || undefined}
-        onLoginRequest={() => setShowLoginModal(true)}
-      />
-      <Footer/></>
-    );
-  }
-
-  switch (routeParams.type) {
-    case "profile":
-      if (user) {
+    if (selectedPostId) {
+      if (selectedPost) {
         return (
-          <UserProfilePage
-            user={user}
+          <PostDetailPage
+            data={selectedPost}
             onBack={() => window.history.back()}
-            onSelectCompany={handleSelectCompany}
-            onLogout={handleLogout}
-            allCompanies={allCompanies}
+            user={user || undefined}
+            onLoginRequest={() => setShowLoginModal(true)}
           />
         );
       } else {
-        return <div className="p-4 text-center">Please log in to view your profile.</div>;
+        return <div className="loading-container"><p>Loading post...</p></div>;
       }
+    }
 
-    case "posts":
-      return (
-        <AllPostsPage
-          onSelectPost={handleSelectPost}
-          user={user || undefined}
-          onLoginRequest={() => setShowLoginModal(true)}
-        />
-      );
-
-    case "about":
-      return <AboutPage />;
-
-    case "privacy":
-      return <PrivacyPolicyPage />;
-
-    case "terms":
-      return <TermsPage />;
-
-    case "home":
-    default:
+    if (selectedCompany) {
       return (
         <>
-          <Banner />
-          <CompanyListPage
-            onSelectCompany={handleSelectCompany}
+
+          <ProfilePage
+            company={selectedCompany}
+            onSelectPost={handleSelectPost}
             user={user || undefined}
-            allPromotions={allPromotions}
-            onClaimOffer={handleClaimOffer}
+            onLoginRequest={() => setShowLoginModal(true)}
           />
-          <Footer />
-        </>
+          <Footer /></>
       );
-  }
-};
+    }
+
+    switch (routeParams.type) {
+      case "profile":
+        if (user) {
+          return (
+            <UserProfilePage
+              user={user}
+              onBack={() => window.history.back()}
+              onSelectCompany={handleSelectCompany}
+              onLogout={handleLogout}
+              allCompanies={allCompanies}
+            />
+          );
+        } else {
+          return <div className="p-4 text-center">Please log in to view your profile.</div>;
+        }
+
+      case "posts":
+        return (
+          <AllPostsPage
+            onSelectPost={handleSelectPost}
+            user={user || undefined}
+            onLoginRequest={() => setShowLoginModal(true)}
+          />
+        );
+
+      case "about":
+        return <AboutPage />;
+
+      case "privacy":
+        return <PrivacyPolicyPage />;
+
+      case "terms":
+        return <TermsPage />;
+
+      case "home":
+      default:
+        return (
+          <>
+            <Banner />
+            <CompanyListPage
+              onSelectCompany={handleSelectCompany}
+              user={user || undefined}
+              allPromotions={allPromotions}
+              onClaimOffer={handleClaimOffer}
+            />
+            <Footer />
+          </>
+        );
+    }
+  };
 
 
   return (
-   <div className="app-container">
+    <div className="app-container">
       {/* Bottom Navigation - Hidden on laptop/desktop */}
       {!isSearchActive && (
         <nav className="app-nav mobile-only">
@@ -5769,8 +5780,8 @@ const renderPage = () => {
 
         <div className="main-wrapper">{renderPage()}</div>
       </div>
-  
-     <LoginModal
+
+      <LoginModal
         isOpen={showLoginModal}
         onClose={() => setShowLoginModal(false)}
         onLogin={handleLogin}

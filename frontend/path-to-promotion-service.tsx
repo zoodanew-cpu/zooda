@@ -1,4 +1,11 @@
-const API_BASE_URL = "https://api.zooda.in"; // update to your backend URL if needed
+export const API_HOST =
+  (import.meta as any)?.env?.VITE_API_BASE ||
+  ((typeof window !== "undefined" &&
+    (window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1"))
+    ? "http://127.0.0.1:5000"
+    : "https://api.zooda.in");
+export const API_BASE_URL = `${API_HOST.replace(/\\/$/, "")}/api`; // update to your backend URL if needed
 
 export interface Promotion {
   id?: string;
@@ -24,7 +31,7 @@ export interface Promotion {
 
 export async function getCompanyPromotions(companyId: string): Promise<Promotion[]> {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/promotions/company/${companyId}`, {
+    const response = await fetch(`${API_BASE_URL}/promotions/company/${companyId}`, {
       method: "GET",
       headers: { "Content-Type": "application/json" },
     });
