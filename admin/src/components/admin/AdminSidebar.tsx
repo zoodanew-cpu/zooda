@@ -6,6 +6,7 @@ import {
   Store, 
   Settings, 
   Shield, 
+  Users,
   X,
   Zap,
   ChevronRight
@@ -16,6 +17,7 @@ const iconMap: Record<string, React.ReactNode> = {
   'fa-building': <Building2 className="h-5 w-5" />,
   'fa-chart-line': <LineChart className="h-5 w-5" />,
   'fa-tags': <Tags className="h-5 w-5" />,
+  'fa-users': <Users className="h-5 w-5" />,
   'fa-store': <Store className="h-5 w-5" />,
   'fa-cog': <Settings className="h-5 w-5" />,
 };

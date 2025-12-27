@@ -4185,6 +4185,84 @@ app.delete(
     }
   }
 );
+
+// --- Admin: Users ---
+app.get("/api/admin/users", async (req, res) => {
+  try {
+    const users = await User.find().select("-password").sort({ createdAt: -1 });
+    res.json(users);
+  } catch (error) {
+    console.error("Admin get users error:", error);
+    res.status(500).json({ message: "Server error fetching users" });
+  }
+});
+
+app.put("/api/admin/users/:userId", async (req, res) => {
+  try {
+    const { firstName, lastName, email, phone, address, role } = req.body;
+
+    if (email) {
+      const existing = await User.findOne({
+        email,
+        _id: { $ne: req.params.userId },
+      });
+      if (existing) {
+        return res.status(400).json({ message: "Email already in use" });
+      }
+    }
+
+    const updateData = { firstName, lastName, email, phone, address, role };
+    Object.keys(updateData).forEach(
+      (key) => updateData[key] === undefined && delete updateData[key]
+    );
+
+    const user = await User.findByIdAndUpdate(req.params.userId, updateData, {
+      new: true,
+      runValidators: true,
+    }).select("-password");
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    res.json({ success: true, message: "User updated successfully", user });
+  } catch (error) {
+    console.error("Admin update user error:", error);
+    res.status(500).json({ message: "Server error updating user" });
+  }
+});
+
+app.delete("/api/admin/users/:userId", async (req, res) => {
+  try {
+    const userId = req.params.userId;
+
+    const businesses = await Business.find({ user: userId }).select("_id");
+    const businessIds = businesses.map((biz) => biz._id);
+
+    if (businessIds.length) {
+      await Promise.all([
+        Post.deleteMany({ business: { $in: businessIds } }),
+        Product.deleteMany({ business: { $in: businessIds } }),
+        Promotion.deleteMany({ business: { $in: businessIds } }),
+        Business.deleteMany({ _id: { $in: businessIds } }),
+      ]);
+    }
+
+    const user = await User.findByIdAndDelete(userId);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    res.json({
+      success: true,
+      message: "User and related business data deleted successfully",
+    });
+  } catch (error) {
+    console.error("Admin delete user error:", error);
+    res.status(500).json({ message: "Server error deleting user" });
+  }
+});
+
 // Get all businesses with their posts, products, and promotions
 app.get("/api/admin/businesses", async (req, res) => {
   try {

@@ -9,6 +9,7 @@ import { AdminAnalyticsTab } from '@/components/admin/tabs/AdminAnalyticsTab';
 import { CategoryManagementTab } from '@/components/admin/tabs/CategoryManagementTab';
 import { BusinessManagementTab } from '@/components/admin/tabs/BusinessManagementTab';
 import { AdminSettingsTab } from '@/components/admin/tabs/AdminSettingsTab';
+import { UserManagementTab } from '@/components/admin/tabs/UserManagementTab';
 
 const API_HOST =
   (import.meta as any)?.env?.VITE_API_BASE ||
@@ -27,6 +28,7 @@ interface AdminData {
   businessAnalytics: any[];
   categories: any[];
   allBusinesses: any[];
+  users: any[];
 }
 
 const adminTabs = [
@@ -34,6 +36,7 @@ const adminTabs = [
   { id: 'approvals', name: 'Business Approvals', icon: 'fa-building' },
   { id: 'analytics', name: 'Business Analytics', icon: 'fa-chart-line' },
   { id: 'categories', name: 'Categories', icon: 'fa-tags' },
+  { id: 'users', name: 'Users', icon: 'fa-users' },
   { id: 'businesses', name: 'All Businesses', icon: 'fa-store' },
   { id: 'settings', name: 'Admin Settings', icon: 'fa-cog' }
 ];
@@ -45,7 +48,8 @@ const Index = () => {
     platformStats: null,
     businessAnalytics: [],
     categories: [],
-    allBusinesses: []
+    allBusinesses: [],
+    users: []
   });
   const [adminLoading, setAdminLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('overview');
@@ -105,13 +109,22 @@ const Index = () => {
   const loadAdminData = async () => {
     setAdminLoading(true);
     try {
-      const [pendingResult, approvedResult, statsResult, analyticsResult, categoriesResult, allBusinessesResult] = await Promise.all([
+      const [
+        pendingResult,
+        approvedResult,
+        statsResult,
+        analyticsResult,
+        categoriesResult,
+        allBusinessesResult,
+        usersResult
+      ] = await Promise.all([
         makeAPIRequest('/admin/businesses?status=pending'),
         makeAPIRequest('/admin/businesses?status=approved'),
         makeAPIRequest('/admin/stats'),
         makeAPIRequest('/admin/analytics/businesses'),
         makeAPIRequest('/admin/categories'),
-        makeAPIRequest('/admin/businesses')
+        makeAPIRequest('/admin/businesses'),
+        makeAPIRequest('/admin/users')
       ]);
 
       setAdminData({
@@ -120,7 +133,8 @@ const Index = () => {
         platformStats: statsResult.success ? statsResult.data : null,
         businessAnalytics: analyticsResult.success ? analyticsResult.data : [],
         categories: categoriesResult.success ? categoriesResult.data : [],
-        allBusinesses: allBusinessesResult.success ? allBusinessesResult.data : []
+        allBusinesses: allBusinessesResult.success ? allBusinessesResult.data : [],
+        users: usersResult.success ? usersResult.data : []
       });
     } catch (error) {
       console.error('Error loading admin data:', error);
@@ -130,7 +144,8 @@ const Index = () => {
         platformStats: null,
         businessAnalytics: [],
         categories: [],
-        allBusinesses: []
+        allBusinesses: [],
+        users: []
       });
     } finally {
       setAdminLoading(false);
@@ -189,6 +204,24 @@ const Index = () => {
     const result = await makeAPIRequest(`/admin/businesses/${businessId}`, { method: 'PUT', body: JSON.stringify(updateData) });
     if (result.success) { await loadAdminData(); alert('Business updated successfully!'); }
     else alert('Error updating business: ' + result.error);
+  };
+
+  const updateUser = async (userId: string, updateData: any) => {
+    const result = await makeAPIRequest(`/admin/users/${userId}`, { method: 'PUT', body: JSON.stringify(updateData) });
+    if (result.success) {
+      await loadAdminData();
+      alert('User updated successfully!');
+      return result.data?.user || null;
+    }
+    alert('Error updating user: ' + result.error);
+    return null;
+  };
+
+  const deleteUser = async (userId: string) => {
+    const result = await makeAPIRequest(`/admin/users/${userId}`, { method: 'DELETE' });
+    if (result.success) { await loadAdminData(); alert('User deleted successfully!'); return true; }
+    alert('Error deleting user: ' + result.error);
+    return false;
   };
 
   const fetchBusinessPosts = async (businessId: string) => {
@@ -282,6 +315,14 @@ const Index = () => {
             onDeleteCategory={deleteCategory}
             onCreateSubcategory={createSubcategory}
             onDeleteSubcategory={deleteSubcategory}
+          />
+        );
+      case 'users':
+        return (
+          <UserManagementTab
+            users={adminData.users}
+            onUpdateUser={updateUser}
+            onDeleteUser={deleteUser}
           />
         );
       case 'businesses':
