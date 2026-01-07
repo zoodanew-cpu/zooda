@@ -143,11 +143,11 @@ interface Promotion {
   updatedAt?: string;
 }
 
-const API_BASE_URL = "https://api.zooda.in";
+const API_BASE_URL = "http://localhost:5000";
 
 const getActivePromotions = async (): Promise<Promotion[]> => {
   try {
-    const response = await axios.get(`https://api.zooda.in/api/promotion`);
+    const response = await axios.get(`http://localhost:5000/api/promotion`);
 
     if (response.data.success && Array.isArray(response.data.data)) {
       return response.data.data.map((promo: any) => ({
@@ -1693,7 +1693,7 @@ interface CompanyListItemProps {
   company: Company;
   onSelectCompany: (company: Company) => void;
   user?: User;
-  onLoginClick?: () => void; // ✅ callback to open login form
+  onLoginClick?: () => void;
 }
 
 const CompanyListItem = ({
@@ -1703,10 +1703,25 @@ const CompanyListItem = ({
   onLoginClick,
 }: CompanyListItemProps) => {
   const [isFollowing, setIsFollowing] = useState(false);
-  const [followers, setFollowers] = useState(
-    (company.followers) || 1
-  );
+  const [followers, setFollowers] = useState(company.followers || 1);
 
+  /* ===============================
+     IMPRESSION TRACKING (ON RENDER)
+  ================================ */
+  useEffect(() => {
+    if (!company?._id) return;
+
+    axios
+      .post(`${API_BASE_URL}/api/analytics/impression`, {
+        companyId: company._id,
+        userId: user?._id,
+      })
+      .catch(() => {});
+  }, [company._id]);
+
+  /* ===============================
+     FOLLOW STATUS
+  ================================ */
   useEffect(() => {
     const checkFollowStatus = async () => {
       if (user?._id && company._id) {
@@ -1728,14 +1743,14 @@ const CompanyListItem = ({
     checkFollowStatus();
   }, [user?._id, company._id]);
 
+  /* ===============================
+     FOLLOW ACTION
+  ================================ */
   const handleFollow = async (e: React.MouseEvent) => {
     e.stopPropagation();
 
     if (!user?._id) {
-      // ✅ Open login form instead of alert
-      if (onLoginClick) {
-        onLoginClick();
-      }
+      onLoginClick?.();
       return;
     }
 
@@ -1746,52 +1761,72 @@ const CompanyListItem = ({
       );
       if (response.data.success) {
         setIsFollowing(response.data.isFollowing);
-        setFollowers((response.data.followers) || 1);
+        setFollowers(response.data.followers || 1);
       }
-    } catch (err: any) {
+    } catch (err) {
       console.error("Follow error:", err);
     }
   };
 
+  /* ===============================
+     VISIT SITE
+  ================================ */
   const handleVisit = (e: React.MouseEvent) => {
     e.stopPropagation();
     window.open(company.siteUrl, "_blank");
   };
 
+  /* ===============================
+     CLICK TRACKING + SELECT
+  ================================ */
+  const handleCompanyClick = async () => {
+    try {
+      await axios.post(`${API_BASE_URL}/api/analytics/click`, {
+        companyId: company._id,
+        userId: user?._id,
+      });
+    } catch {
+      // silent fail
+    }
+
+    onSelectCompany(company);
+  };
+
   return (
     <article
       className="company-card"
-      onClick={() => onSelectCompany(company)}
+      onClick={handleCompanyClick}
       aria-labelledby={`company-name-${company.rank}`}
       role="button"
       tabIndex={0}
     >
       <div className="company-row single-line">
         <img src={company.logoUrl} alt="Logo" className="company-logo" />
+
         <div className="company-info">
-          
           <h2 id={`company-name-${company.rank}`} className="company-name">
             {company.name}
           </h2>
 
-
           <div className="company-stats">
-            {/* ✅ Always show correct follower count */}
-           <span>{Number(company.followers) && Number(company.followers) > 0 ? Number(company.followers) : 0} Followers</span>
+            <span>
+              {Number(company.followers) > 0 ? Number(company.followers) : 0} Followers
+            </span>
 
-{company.engagementRate > 0 ? (
-  <div className="stat-item">
-    <span className="stat-label">{company.engagementRate}%</span>
-  </div>
-) : (
-  <div className="stat-item">
-    <span className="stat-label">NEW</span>
-  </div>
-)}
+            {company.engagementRate > 0 ? (
+              <div className="stat-item">
+                <span className="stat-label">{company.engagementRate}%</span>
+              </div>
+            ) : (
+              <div className="stat-item">
+                <span className="stat-label">NEW</span>
+              </div>
+            )}
 
             <button className="visit-btn" onClick={handleVisit}>
               Visit site
             </button>
+
             <button
               className={`follow-btn ${isFollowing ? "following" : ""}`}
               onClick={handleFollow}
@@ -1806,7 +1841,6 @@ const CompanyListItem = ({
     </article>
   );
 };
-
 
 interface CompanyListPageProps {
   onSelectCompany: (company: Company) => void;
@@ -2616,8 +2650,8 @@ const AllPostsPage = ({ onSelectPost, user, onLoginRequest }: AllPostsPageProps)
 
       const endpoint =
         activeTab === "Following"
-          ? `https://api.zooda.in/api/posts/following/${user._id}`
-          : `https://api.zooda.in/api/posts/unfollowed/${user._id}`;
+          ? `http://localhost:5000/api/posts/following/${user._id}`
+          : `http://localhost:5000/api/posts/unfollowed/${user._id}`;
 
       console.log('Fetching posts from:', endpoint);
       const response = await axios.get(endpoint);
@@ -2635,7 +2669,7 @@ const AllPostsPage = ({ onSelectPost, user, onLoginRequest }: AllPostsPageProps)
               `https://picsum.photos/600/400?random=${i}`;
 
             if (!imageUrl.startsWith("http")) {
-              imageUrl = `https://api.zooda.in${
+              imageUrl = `http://localhost:5000${
                 imageUrl.startsWith("/") ? "" : "/"
               }${imageUrl}`;
             }
@@ -2647,7 +2681,7 @@ const AllPostsPage = ({ onSelectPost, user, onLoginRequest }: AllPostsPageProps)
             if (companyId) {
               try {
                 const companyResponse = await axios.get(
-                  `https://api.zooda.in/api/companies/${companyId}`
+                  `http://localhost:5000/api/companies/${companyId}`
                 );
                 if (companyResponse.data.success) {
                   company = companyResponse.data.company;
@@ -2656,7 +2690,7 @@ const AllPostsPage = ({ onSelectPost, user, onLoginRequest }: AllPostsPageProps)
                   if (company.logoUrl) {
                     let logoUrl = company.logoUrl;
                     if (!logoUrl.startsWith("http")) {
-                      logoUrl = `https://api.zooda.in${
+                      logoUrl = `http://localhost:5000${
                         logoUrl.startsWith("/") ? "" : "/"
                       }${logoUrl}`;
                     }
@@ -2690,7 +2724,7 @@ const AllPostsPage = ({ onSelectPost, user, onLoginRequest }: AllPostsPageProps)
             if (user?._id && post._id) {
               try {
                 const likeResponse = await axios.get(
-                  `https://api.zooda.in/api/post/${post._id}/like-status/${user._id}`
+                  `http://localhost:5000/api/post/${post._id}/like-status/${user._id}`
                 );
                 console.log('Like status response for post', post._id, ':', likeResponse.data);
                 
@@ -2773,7 +2807,7 @@ const AllPostsPage = ({ onSelectPost, user, onLoginRequest }: AllPostsPageProps)
 
       // Make API call
       const response = await axios.post(
-        `https://api.zooda.in/api/post/${postId}/like`,
+        `http://localhost:5000/api/post/${postId}/like`,
         {
           userId: user._id,
         }
@@ -2847,7 +2881,7 @@ const AllPostsPage = ({ onSelectPost, user, onLoginRequest }: AllPostsPageProps)
       console.log('Sending comment for post:', postId, 'by user:', user._id);
       
       const response = await axios.post(
-        `https://api.zooda.in/api/post/${postId}/comment`,
+        `http://localhost:5000/api/post/${postId}/comment`,
         {
           text: commentText,
           userId: user._id,
@@ -3090,7 +3124,7 @@ const PostGridItem = ({
       try {
         console.log('Fetching comments for post:', post._id);
         const response = await axios.get(
-          `https://api.zooda.in/api/post/${post._id}/comments`
+          `http://localhost:5000/api/post/${post._id}/comments`
         );
         console.log('Comments response:', response.data);
         
@@ -3132,7 +3166,7 @@ const PostGridItem = ({
         // Refresh comments after successful comment
         try {
           const response = await axios.get(
-            `https://api.zooda.in/api/post/${post._id}/comments`
+            `http://localhost:5000/api/post/${post._id}/comments`
           );
           if (response.data.success !== false) {
             setPostComments(response.data.comments || []);
@@ -4077,7 +4111,7 @@ const ProfilePage = ({
       setPosts(updatedPosts);
 
       await axios.post(
-        `https://api.zooda.in/api/post/${postId}/like`,
+        `http://localhost:5000/api/post/${postId}/like`,
         { userId: user._id }
       );
     } catch (err) {
@@ -4099,7 +4133,7 @@ const ProfilePage = ({
 
     try {
       const res = await axios.post(
-        `https://api.zooda.in/api/post/${postId}/comment`,
+        `http://localhost:5000/api/post/${postId}/comment`,
         {
           text: commentText,
           userId: user._id,

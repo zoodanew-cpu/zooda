@@ -10,7 +10,7 @@ import { CategoryManagementTab } from '@/components/admin/tabs/CategoryManagemen
 import { BusinessManagementTab } from '@/components/admin/tabs/BusinessManagementTab';
 import { AdminSettingsTab } from '@/components/admin/tabs/AdminSettingsTab';
 
-const API_BASE = 'https://api.zooda.in/api';
+const API_BASE = 'http://localhost:5000/api';
 const DEFAULT_PASSWORD = 'zooda';
 
 interface AdminData {

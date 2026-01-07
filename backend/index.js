@@ -2186,93 +2186,127 @@ app.get('/api/business/all', async (req, res) => {
 });
 // --- GET /api/dashboard/:businessId (UPDATED CODE) ---
 app.get('/api/dashboard/:businessId', async (req, res) => {
-    try {
-        const { businessId } = req.params;
-        
-        const businessObjectId = new mongoose.Types.ObjectId(businessId);
+  try {
+    const { businessId } = req.params;
+    const businessObjectId = new mongoose.Types.ObjectId(businessId);
 
-        const business = await Business.findById(businessId).select('businessName businessCategory createdAt engagementRate');
-        if (!business) {
-            return res.status(404).json({ success: false, message: 'Business not found' });
-        }
+    const business = await Business.findById(businessId)
+      .select('businessName businessCategory createdAt engagementRate');
 
-        const [metricsResult, revenueResult, totalProducts, recentPosts] = await Promise.all([
-            
-            // A. Post Aggregation for Engagement and Total Posts
-            Post.aggregate([
-                { $match: { business: businessObjectId } }, // Use ObjectId for efficient matching
-                {
-                    $group: {
-                        _id: null,
-                        totalPosts: { $sum: 1 },
-                        totalEngagement: {
-                            $sum: {
-                                $add: [
-                                    { $size: { $ifNull: ['$likesList', []] } },
-                                    { $size: { $ifNull: ['$commentsList', []] } },
-                                    { $ifNull: ['$shares', 0] }
-                                ]
-                            }
-                        },
-                    }
-                },
-                { $project: { _id: 0, totalPosts: 1, totalEngagement: 1 } }
-            ]),
-            
-            // B. Product Aggregation for Revenue
-            Product.aggregate([
-                { $match: { business: businessObjectId } },
-                { $group: { _id: null, totalRevenue: { $sum: '$sales.revenue' } } }
-            ]),
-
-            // C. Product Count (Efficient query)
-            Product.countDocuments({ business: businessId }),
-            
-            // D. RECENT ACTIVITY (FIX: Separate query for correct sorting and limiting)
-            Post.find({ business: businessObjectId })
-                .sort({ createdAt: -1 }) // Sort Descending by date
-                .limit(10)               // Limit to 10 items
-                .select('content createdAt likesList commentsList')
-        ]);
-
-        const metrics = metricsResult[0] || { totalPosts: 0, totalEngagement: 0 };
-        const revenue = revenueResult[0] || { totalRevenue: 0 };
-        
-        // 4. Format Recent Activity
-        const formattedActivity = recentPosts.map(post => ({
-            type: 'post',
-            description: `New post: "${post.content.substring(0, 30)}${post.content.length > 30 ? '...' : ''}"`,
-            // Calculate engagement from the fetched lists
-            engagement: `${post.likesList.length} likes, ${post.commentsList.length} comments`,
-            time: post.createdAt
-        }));
-
-        // 5. SEND RESPONSE
-        res.json({
-            success: true,
-            dashboard: {
-                stats: {
-                    totalPosts: metrics.totalPosts,
-                    totalEngagement: metrics.totalEngagement,
-                    totalProducts: totalProducts,
-                    totalRevenue: Math.round((revenue.totalRevenue || 0) * 100) / 100
-                },
-                recentActivity: formattedActivity,
-                business: {
-                    name: business.businessName,
-                    category: business.businessCategory,
-                    joinedDate: business.createdAt
-                }
-            }
-        });
-    } catch (error) {
-        console.error('Get dashboard by business ID error:', error);
-        res.status(500).json({ 
-            success: false,
-            message: 'Server error while fetching dashboard data'
-        });
+    if (!business) {
+      return res.status(404).json({
+        success: false,
+        message: 'Business not found'
+      });
     }
+
+    const [
+      metricsResult,
+      revenueResult,
+      totalProducts,
+      recentPosts,
+      analyticsResult
+    ] = await Promise.all([
+
+      // A. POST METRICS
+      Post.aggregate([
+        { $match: { business: businessObjectId } },
+        {
+          $group: {
+            _id: null,
+            totalPosts: { $sum: 1 },
+            totalEngagement: {
+              $sum: {
+                $add: [
+                  { $size: { $ifNull: ['$likesList', []] } },
+                  { $size: { $ifNull: ['$commentsList', []] } },
+                  { $ifNull: ['$shares', 0] }
+                ]
+              }
+            }
+          }
+        },
+        { $project: { _id: 0, totalPosts: 1, totalEngagement: 1 } }
+      ]),
+
+      // B. REVENUE
+      Product.aggregate([
+        { $match: { business: businessObjectId } },
+        { $group: { _id: null, totalRevenue: { $sum: '$sales.revenue' } } }
+      ]),
+
+      // C. PRODUCT COUNT
+      Product.countDocuments({ business: businessId }),
+
+      // D. RECENT POSTS
+      Post.find({ business: businessObjectId })
+        .sort({ createdAt: -1 })
+        .limit(10)
+        .select('content createdAt likesList commentsList'),
+
+      // E. ANALYTICS (IMPRESSIONS & CLICKS)
+      Analytics.aggregate([
+        { $match: { business: businessObjectId } },
+        {
+          $group: {
+            _id: null,
+            impressions: {
+              $sum: {
+                $cond: [{ $eq: ['$type', 'impression'] }, 1, 0]
+              }
+            },
+            clicks: {
+              $sum: {
+                $cond: [{ $eq: ['$type', 'click'] }, 1, 0]
+              }
+            }
+          }
+        }
+      ])
+    ]);
+
+    const metrics = metricsResult[0] || { totalPosts: 0, totalEngagement: 0 };
+    const revenue = revenueResult[0] || { totalRevenue: 0 };
+    const analytics = analyticsResult[0] || { impressions: 0, clicks: 0 };
+
+    // FORMAT ACTIVITY
+    const formattedActivity = recentPosts.map(post => ({
+      type: 'post',
+      description: `New post: "${post.content.substring(0, 30)}${post.content.length > 30 ? '...' : ''}"`,
+      engagement: `${post.likesList.length} likes, ${post.commentsList.length} comments`,
+      time: post.createdAt
+    }));
+
+    // SEND RESPONSE
+    res.json({
+      success: true,
+      dashboard: {
+        stats: {
+          totalPosts: metrics.totalPosts,
+          totalEngagement: metrics.totalEngagement,
+          totalProducts: totalProducts,
+          totalRevenue: Math.round((revenue.totalRevenue || 0) * 100) / 100,
+          impressions: analytics.impressions,
+          clicks: analytics.clicks
+        },
+        recentActivity: formattedActivity,
+        business: {
+          name: business.businessName,
+          category: business.businessCategory,
+          joinedDate: business.createdAt
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Get dashboard by business ID error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while fetching dashboard data'
+    });
+  }
 });
+
 
 app.post("/api/follow/:businessId", async (req, res) => {
   const { businessId } = req.params;
@@ -2836,7 +2870,7 @@ app.get("/api/user/:userId/following", async (req, res) => {
       
       // Ensure logo URL is properly formatted
       if (businessObj.logoUrl && !businessObj.logoUrl.startsWith("http")) {
-        businessObj.logoUrl = `${process.env.API_BASE_URL || 'https://api.zooda.in'}${businessObj.logoUrl.startsWith("/") ? "" : "/"}${businessObj.logoUrl}`;
+        businessObj.logoUrl = `${process.env.API_BASE_URL || 'http://localhost:5000'}${businessObj.logoUrl.startsWith("/") ? "" : "/"}${businessObj.logoUrl}`;
       }
 
       // Generate username from businessName
@@ -3050,7 +3084,7 @@ app.get("/api/posts/following/:userId", async (req, res) => {
       if (postObj.business && postObj.business.logoUrl) {
         let logoUrl = postObj.business.logoUrl;
         if (!logoUrl.startsWith("http")) {
-          logoUrl = `${process.env.API_BASE_URL || 'https://api.zooda.in'}${logoUrl.startsWith("/") ? "" : "/"}${logoUrl}`;
+          logoUrl = `${process.env.API_BASE_URL || 'http://localhost:5000'}${logoUrl.startsWith("/") ? "" : "/"}${logoUrl}`;
         }
         postObj.business.logoUrl = logoUrl;
       }
@@ -3129,7 +3163,7 @@ app.get("/api/posts/unfollowed/:userId", async (req, res) => {
       if (postObj.business && postObj.business.logoUrl) {
         let logoUrl = postObj.business.logoUrl;
         if (!logoUrl.startsWith("http")) {
-          logoUrl = `${process.env.API_BASE_URL || 'https://api.zooda.in'}${logoUrl.startsWith("/") ? "" : "/"}${logoUrl}`;
+          logoUrl = `${process.env.API_BASE_URL || 'http://localhost:5000'}${logoUrl.startsWith("/") ? "" : "/"}${logoUrl}`;
         }
         postObj.business.logoUrl = logoUrl;
       }
@@ -3977,6 +4011,282 @@ app.post('/reset-password-direct', async (req, res) => {
     
   } catch (error) {
     res.status(500).json({ success: false, message: 'Reset failed' });
+  }
+});
+const companyAnalyticsSchema = new mongoose.Schema({
+  companyId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Company",
+    required: true,
+  },
+  userId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    default: null, // guest users allowed
+  },
+  type: {
+    type: String,
+    enum: ["impression", "click"],
+    required: true,
+  },
+  createdAt: {
+    type: Date,
+    default: Date.now,
+  },
+});
+
+// Prevent model overwrite error in dev
+const CompanyAnalytics =
+  mongoose.models.CompanyAnalytics ||
+  mongoose.model("CompanyAnalytics", companyAnalyticsSchema);
+
+/* ===============================
+   SAVE IMPRESSION
+================================ */
+app.post("/api/analytics/impression", async (req, res) => {
+  try {
+    const { companyId, userId } = req.body;
+
+    if (!companyId) {
+      return res.status(400).json({ success: false, message: "Company ID required" });
+    }
+
+    // OPTIONAL: avoid duplicate impression per user per day
+    if (userId) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const alreadyViewed = await CompanyAnalytics.findOne({
+        companyId,
+        userId,
+        type: "impression",
+        createdAt: { $gte: today },
+      });
+
+      if (alreadyViewed) {
+        return res.json({ success: true, skipped: true });
+      }
+    }
+
+    await CompanyAnalytics.create({
+      companyId,
+      userId: userId || null,
+      type: "impression",
+    });
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Impression error:", err);
+    res.status(500).json({ success: false });
+  }
+});
+
+/* ===============================
+   SAVE CLICK
+================================ */
+app.post("/api/analytics/click", async (req, res) => {
+  try {
+    const { companyId, userId } = req.body;
+
+    if (!companyId) {
+      return res.status(400).json({ success: false, message: "Company ID required" });
+    }
+
+    await CompanyAnalytics.create({
+      companyId,
+      userId: userId || null,
+      type: "click",
+    });
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Click error:", err);
+    res.status(500).json({ success: false });
+  }
+});
+
+/* ===============================
+   COMPANY ANALYTICS (OWNER VIEW)
+================================ */
+app.get("/api/analytics/company/:companyId", async (req, res) => {
+  try {
+    const { companyId } = req.params;
+
+    const stats = await CompanyAnalytics.aggregate([
+      {
+        $match: {
+          companyId: new mongoose.Types.ObjectId(companyId),
+        },
+      },
+      {
+        $group: {
+          _id: "$type",
+          count: { $sum: 1 },
+        },
+      },
+    ]);
+
+    let impressions = 0;
+    let clicks = 0;
+
+    stats.forEach((item) => {
+      if (item._id === "impression") impressions = item.count;
+      if (item._id === "click") clicks = item.count;
+    });
+
+    const ctr =
+      impressions > 0 ? ((clicks / impressions) * 100).toFixed(2) : 0;
+
+    res.json({
+      success: true,
+      impressions,
+      clicks,
+      ctr,
+    });
+  } catch (err) {
+    console.error("Analytics fetch error:", err);
+    res.status(500).json({ success: false });
+  }
+});
+app.get("/api/dashboard/company/:companyId", async (req, res) => {
+  try {
+    const { companyId } = req.params;
+    const companyObjectId = new mongoose.Types.ObjectId(companyId);
+
+    /* ------------------ COMPANY DETAILS ------------------ */
+    const company = await Business.findById(companyId).select(
+      "companyName category createdAt"
+    );
+
+    if (!company) {
+      return res.status(404).json({
+        success: false,
+        message: "Company not found",
+      });
+    }
+
+    /* ------------------ PARALLEL QUERIES ------------------ */
+    const [
+      postMetrics,
+      revenueResult,
+      totalProducts,
+      recentPosts,
+      analyticsStats,
+    ] = await Promise.all([
+      /* A. POSTS METRICS */
+      Post.aggregate([
+        { $match: { company: companyObjectId } },
+        {
+          $group: {
+            _id: null,
+            totalPosts: { $sum: 1 },
+            totalEngagement: {
+              $sum: {
+                $add: [
+                  { $size: { $ifNull: ["$likesList", []] } },
+                  { $size: { $ifNull: ["$commentsList", []] } },
+                  { $ifNull: ["$shares", 0] },
+                ],
+              },
+            },
+          },
+        },
+        { $project: { _id: 0 } },
+      ]),
+
+      /* B. REVENUE */
+      Product.aggregate([
+        { $match: { company: companyObjectId } },
+        {
+          $group: {
+            _id: null,
+            totalRevenue: { $sum: "$sales.revenue" },
+          },
+        },
+      ]),
+
+      /* C. TOTAL PRODUCTS */
+      Product.countDocuments({ company: companyId }),
+
+      /* D. RECENT POSTS */
+      Post.find({ company: companyObjectId })
+        .sort({ createdAt: -1 })
+        .limit(10)
+        .select("content createdAt likesList commentsList"),
+
+      /* E. ANALYTICS (IMPRESSIONS & CLICKS) */
+      CompanyAnalytics.aggregate([
+        {
+          $match: {
+            companyId: companyObjectId,
+          },
+        },
+        {
+          $group: {
+            _id: "$type",
+            count: { $sum: 1 },
+          },
+        },
+      ]),
+    ]);
+
+    /* ------------------ ANALYTICS FORMAT ------------------ */
+    let impressions = 0;
+    let clicks = 0;
+
+    analyticsStats.forEach((item) => {
+      if (item._id === "impression") impressions = item.count;
+      if (item._id === "click") clicks = item.count;
+    });
+
+    const ctr =
+      impressions > 0 ? Number(((clicks / impressions) * 100).toFixed(2)) : 0;
+
+    /* ------------------ POST METRICS DEFAULT ------------------ */
+    const metrics = postMetrics[0] || {
+      totalPosts: 0,
+      totalEngagement: 0,
+    };
+
+    const revenue = revenueResult[0]?.totalRevenue || 0;
+
+    /* ------------------ RECENT ACTIVITY FORMAT ------------------ */
+    const formattedActivity = recentPosts.map((post) => ({
+      type: "post",
+      description: `New post: "${post.content.substring(0, 30)}${
+        post.content.length > 30 ? "..." : ""
+      }"`,
+      engagement: `${post.likesList.length} likes, ${post.commentsList.length} comments`,
+      time: post.createdAt,
+    }));
+
+    /* ------------------ FINAL RESPONSE ------------------ */
+    res.json({
+      success: true,
+      dashboard: {
+        stats: {
+          totalPosts: metrics.totalPosts,
+          totalEngagement: metrics.totalEngagement,
+          totalProducts,
+          totalRevenue: Math.round(revenue * 100) / 100,
+          impressions,
+          clicks,
+          ctr,
+        },
+        recentActivity: formattedActivity,
+        company: {
+          name: company.companyName,
+          category: company.category,
+          joinedDate: company.createdAt,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Dashboard fetch error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error while fetching dashboard data",
+    });
   }
 });
 

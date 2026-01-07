@@ -19,7 +19,16 @@ const DashboardScreen = ({ existingBusiness, user, notify }: DashboardScreenProp
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
+  // NEW: analytics state
+  const [analytics, setAnalytics] = useState<{
+    impressions: number;
+    clicks: number;
+    ctr: number | string;
+  } | null>(null);
+
   const businessId = existingBusiness?._id;
+  // if companyId is different in your schema, change this accordingly
+  const companyId = existingBusiness?._id;
 
   const fetchDashboardData = useCallback(async () => {
     if (!businessId) {
@@ -48,9 +57,30 @@ const DashboardScreen = ({ existingBusiness, user, notify }: DashboardScreenProp
     }
   }, [businessId, notify]);
 
+  // NEW: fetch company analytics (impressions, clicks, ctr)
+  const fetchCompanyAnalytics = useCallback(async () => {
+    if (!companyId) return;
+
+    try {
+      const res = await axios.get(`/analytics/company/${companyId}`);
+      if (res.data?.success) {
+        setAnalytics({
+          impressions: res.data.impressions || 0,
+          clicks: res.data.clicks || 0,
+          ctr: res.data.ctr || 0,
+        });
+      }
+    } catch (err: any) {
+      console.error('Analytics fetch error:', err);
+      notify('error', 'Failed to load analytics');
+    }
+  }, [companyId, notify]);
+
   useEffect(() => {
+    // run both in parallel
     fetchDashboardData();
-  }, [fetchDashboardData]);
+    fetchCompanyAnalytics();
+  }, [fetchDashboardData, fetchCompanyAnalytics]);
 
   if (loading) {
     return (
@@ -86,8 +116,20 @@ const DashboardScreen = ({ existingBusiness, user, notify }: DashboardScreenProp
     platformPerformance = [],
   } = dashboardData;
 
-  const { totalEngagement = 0, totalProducts = 0, totalPromotions = 0, followers = 0, totalPosts = 0 } = stats;
+  const {
+    totalEngagement = 0,
+    totalProducts = 0,
+    totalPromotions = 0,
+    followers = 0,
+    totalPosts = 0,
+  } = stats;
+
   const displayEngagement = totalEngagement > 0 ? totalEngagement : totalPosts;
+
+  // analytics values with fallbacks
+  const impressions = analytics?.impressions ?? 0;
+  const clicks = analytics?.clicks ?? 0;
+  const ctr = analytics?.ctr ?? 0;
 
   return (
     <motion.div
@@ -108,7 +150,7 @@ const DashboardScreen = ({ existingBusiness, user, notify }: DashboardScreenProp
             <p className="text-muted-foreground text-sm">Overview of your business performance</p>
           </div>
         </div>
-        <button onClick={fetchDashboardData} className="btn-ghost">
+        <button onClick={() => { fetchDashboardData(); fetchCompanyAnalytics(); }} className="btn-ghost">
           <RefreshCw size={18} />
         </button>
       </div>
@@ -145,15 +187,29 @@ const DashboardScreen = ({ existingBusiness, user, notify }: DashboardScreenProp
         />
       </div>
 
-      {/* Charts Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <EngagementChart />
-        <ProductsChart />
+      {/* Analytics Stats */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <StatCard
+          title="Impressions"
+          value={impressions}
+          icon={<BarChart3 size={24} />}
+          gradient="purple"
+          delay={0}
+        />
+        <StatCard
+          title="Clicks"
+          value={clicks}
+          icon={<BarChart3 size={24} />}
+          gradient="success"
+          delay={0.1}
+        />
+       
       </div>
 
-      {/* Monthly Overview */}
-      <OverviewChart />
+    
 
+      {/* Monthly Overview */}
+   
       {/* Content Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Recent Activity */}

@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  Image, Plus, X, Heart, MessageCircle, Clock, Edit, Trash2,
-  Send
+  Image, Plus, X, Heart, MessageCircle, Clock, Edit, Trash2, Send
 } from 'lucide-react';
 import axios from '@/lib/api';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
@@ -15,6 +14,8 @@ interface PostsScreenProps {
 
 // Post Create Form Modal
 const PostCreateForm = ({ businessId, onClose, onSuccess, notify, existingPost }: any) => {
+  const defaultTags = ['General', 'Offer', 'Update', 'Announcement'];
+
   const [formData, setFormData] = useState({
     content: existingPost?.content || '',
     scheduledFor: existingPost?.scheduledFor
@@ -25,7 +26,13 @@ const PostCreateForm = ({ businessId, onClose, onSuccess, notify, existingPost }
 
   const [mediaFile, setMediaFile] = useState<File | null>(null);
   const [postLoading, setPostLoading] = useState(false);
-  const [categories, setCategories] = useState<string[]>(existingPost?.category ? [existingPost.category] : []);
+
+  // default tags + existing category if editing
+  const [categories, setCategories] = useState<string[]>(
+    existingPost?.category
+      ? Array.from(new Set([existingPost.category, ...defaultTags]))
+      : defaultTags
+  );
   const [newCategory, setNewCategory] = useState('');
 
   const handleAddCategory = () => {
