@@ -67,7 +67,7 @@ const AuthScreen = ({ isRegister, onAuthSuccess, switchMode }: AuthScreenProps) 
 
     setAuthLoading(true);
     try {
-      const res = await axios.post('http://localhost:5000/reset-password-direct', {
+      const res = await axios.post('https://api.zooda.in/reset-password-direct', {
         email: forgotEmail,
         newPassword: newPassword,
       });
