@@ -2159,31 +2159,38 @@ app.use((err, req, res, next) => {
 // --- GET /api/business/all?filter=approved ---
 // This endpoint is used by the client-side component to list approved businesses.
 app.get('/api/business/all', async (req, res) => {
-   try {
+  try {
     const { filter, category } = req.query;
 
     // ✅ Build query object dynamically
-    const query = {};
+    const query = {
+      verified: true, // 🔐 ONLY verified businesses
+    };
 
-    // Only show approved businesses if requested
+    // ✅ Only show approved businesses if requested
     if (filter === "approved") {
       query.status = "approved";
     }
 
-    // ✅ Filter by category if provided (e.g. Ecommerce or LMS)
+    // ✅ Filter by category if provided (e.g. Ecommerce, LMS)
     if (category && category !== "All") {
       query.businessCategory = category;
     }
 
-    const businesses = await Business.find(query).sort({ createdAt: -1 });
+    const businesses = await Business
+      .find(query)
+      .sort({ createdAt: -1 });
 
     res.status(200).json(businesses);
   } catch (err) {
     console.error("Error fetching businesses:", err);
-    res.status(500).json({ success: false, message: "Failed to fetch businesses" });
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch businesses",
+    });
   }
-
 });
+
 // --- GET /api/dashboard/:businessId (UPDATED CODE) ---
 app.get('/api/dashboard/:businessId', async (req, res) => {
   try {
