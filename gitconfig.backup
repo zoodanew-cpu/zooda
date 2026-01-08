@@ -1,0 +1,12 @@
+filter.lfs.clean=git-lfs clean -- %f
+filter.lfs.smudge=git-lfs smudge -- %f
+filter.lfs.process=git-lfs filter-process
+filter.lfs.required=true
+user.name=Peter Mwendia
+user.email=ptermwendia@gmail.com
+credential.https://github.com.helper=
+credential.https://github.com.helper=!/usr/bin/gh auth git-credential
+credential.https://gist.github.com.helper=
+credential.https://gist.github.com.helper=!/usr/bin/gh auth git-credential
+init.defaultbranch=main
+5D62-F949
