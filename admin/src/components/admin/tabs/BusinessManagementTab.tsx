@@ -16,16 +16,22 @@ interface Business {
   status: string;
   totalPosts?: number;
   totalProducts?: number;
+  totalPromotions?: number;
 }
 
 interface Post {
   _id: string;
-  title?: string;
   content: string;
   createdAt: string;
   likesCount?: number;
   commentsCount?: number;
   status: string;
+  mediaUrl?: string;
+  mediaType?: string;
+  platforms?: string[];
+  category?: string;
+  caption?: string;
+  scheduledFor?: string | null;
 }
 
 interface Product {
@@ -132,6 +138,7 @@ export function BusinessManagementTab({
     if (window.confirm('Are you sure you want to delete this post?')) {
       const result = await onDeletePost(businessId, postId);
       if (result.success) {
+        // Refresh posts after deletion
         const posts = await fetchBusinessPosts(businessId);
         setBusinessData(prev => ({ ...prev, posts }));
       }
@@ -142,6 +149,7 @@ export function BusinessManagementTab({
     if (window.confirm('Are you sure you want to delete this product?')) {
       const result = await onDeleteProduct(businessId, productId);
       if (result.success) {
+        // Refresh products after deletion
         const products = await fetchBusinessProducts(businessId);
         setBusinessData(prev => ({ ...prev, products }));
       }
@@ -152,6 +160,7 @@ export function BusinessManagementTab({
     if (window.confirm('Are you sure you want to delete this promotion?')) {
       const result = await onDeletePromotion(businessId, promotionId);
       if (result.success) {
+        // Refresh promotions after deletion
         const promotions = await fetchBusinessPromotions(businessId);
         setBusinessData(prev => ({ ...prev, promotions }));
       }
@@ -180,7 +189,7 @@ export function BusinessManagementTab({
         </div>
 
         <div className="flex rounded-lg bg-muted p-1 overflow-x-auto">
-          {(['details', 'posts', 'products', 'promotions'] as const).map(section => (
+          {(['details'] as const).map(section => (
             <button
               key={section}
               onClick={() => setActiveSection(section)}
@@ -211,23 +220,6 @@ export function BusinessManagementTab({
           />
         )}
 
-        {activeSection === 'posts' && (
-          loadingData ? <LoadingSpinner message="Loading posts..." /> : (
-            <PostsSection posts={businessData.posts} businessId={selectedBusiness._id} onDeletePost={handleDeletePost} />
-          )
-        )}
-
-        {activeSection === 'products' && (
-          loadingData ? <LoadingSpinner message="Loading products..." /> : (
-            <ProductsSection products={businessData.products} businessId={selectedBusiness._id} onDeleteProduct={handleDeleteProduct} />
-          )
-        )}
-
-        {activeSection === 'promotions' && (
-          loadingData ? <LoadingSpinner message="Loading promotions..." /> : (
-            <PromotionsSection promotions={businessData.promotions} businessId={selectedBusiness._id} onDeletePromotion={handleDeletePromotion} />
-          )
-        )}
       </div>
     );
   }
@@ -262,6 +254,10 @@ export function BusinessManagementTab({
                 <div className="text-center flex-1">
                   <p className="text-lg font-bold text-foreground">{business.totalProducts || 0}</p>
                   <p className="text-xs text-muted-foreground">Products</p>
+                </div>
+                <div className="text-center flex-1">
+                  <p className="text-lg font-bold text-foreground">{business.totalPromotions || 0}</p>
+                  <p className="text-xs text-muted-foreground">Promotions</p>
                 </div>
               </div>
 
@@ -394,83 +390,3 @@ function FormField({ label, icon: Icon, value, editing, onChange, type = 'text',
   );
 }
 
-function PostsSection({ posts, businessId, onDeletePost }: { posts: Post[]; businessId: string; onDeletePost: (bid: string, pid: string) => void }) {
-  if (!posts.length) return <EmptyState icon={Newspaper} title="No posts found" description="This business hasn't created any posts yet" />;
-  return (
-    <div className="space-y-4">
-      {posts.map(post => (
-        <div key={post._id} className="bg-card rounded-xl border border-border p-5">
-          <div className="flex items-start justify-between mb-3">
-            <div>
-              <h4 className="font-semibold text-foreground">{post.title || 'Untitled Post'}</h4>
-              <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1"><Calendar className="h-3 w-3" />{new Date(post.createdAt).toLocaleDateString()}</p>
-            </div>
-            <StatusBadge status={post.status} />
-          </div>
-          <p className="text-sm text-muted-foreground mb-4">{post.content}</p>
-          <div className="flex items-center justify-between">
-            <div className="flex gap-4 text-sm text-muted-foreground">
-              <span className="flex items-center gap-1"><Heart className="h-4 w-4" />{post.likesCount || 0}</span>
-              <span className="flex items-center gap-1"><MessageCircle className="h-4 w-4" />{post.commentsCount || 0}</span>
-            </div>
-            <button onClick={() => onDeletePost(businessId, post._id)} className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-destructive/10 text-destructive text-sm hover:bg-destructive/20 transition-all">
-              <Trash2 className="h-4 w-4" /> Delete
-            </button>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function ProductsSection({ products, businessId, onDeleteProduct }: { products: Product[]; businessId: string; onDeleteProduct: (bid: string, pid: string) => void }) {
-  if (!products.length) return <EmptyState icon={ShoppingBag} title="No products found" description="This business hasn't added any products yet" />;
-  return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-      {products.map(product => (
-        <div key={product._id} className="bg-card rounded-xl border border-border p-5">
-          <div className="flex items-start justify-between mb-2">
-            <h4 className="font-semibold text-foreground">{product.name}</h4>
-            <span className="text-lg font-bold text-success">${product.price}</span>
-          </div>
-          <p className="text-sm text-muted-foreground mb-3">{product.description}</p>
-          <div className="flex items-center justify-between">
-            <div className="text-xs text-muted-foreground">SKU: {product.sku}</div>
-            <StatusBadge status={product.isActive ? 'active' : 'inactive'} />
-          </div>
-          <button onClick={() => onDeleteProduct(businessId, product._id)} className="w-full mt-4 flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-destructive/10 text-destructive text-sm hover:bg-destructive/20 transition-all">
-            <Trash2 className="h-4 w-4" /> Delete
-          </button>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function PromotionsSection({ promotions, businessId, onDeletePromotion }: { promotions: Promotion[]; businessId: string; onDeletePromotion: (bid: string, pid: string) => void }) {
-  if (!promotions.length) return <EmptyState icon={Percent} title="No promotions found" description="This business hasn't created any promotions yet" />;
-  return (
-    <div className="space-y-4">
-      {promotions.map(promo => (
-        <div key={promo._id} className="bg-card rounded-xl border border-border p-5">
-          <div className="flex items-start justify-between mb-3">
-            <div>
-              <h4 className="font-semibold text-foreground">{promo.name}</h4>
-              {promo.discountValue > 0 && <span className="inline-block mt-1 px-2 py-0.5 rounded-full bg-success/10 text-success text-xs font-medium">{promo.discountValue}% OFF</span>}
-            </div>
-            <StatusBadge status={promo.status} />
-          </div>
-          <p className="text-sm text-muted-foreground mb-3">{promo.description}</p>
-          <div className="flex flex-wrap gap-4 text-xs text-muted-foreground mb-4">
-            <span>Type: {promo.type}</span>
-            <span>Start: {new Date(promo.startDate).toLocaleDateString()}</span>
-            <span>End: {promo.endDate ? new Date(promo.endDate).toLocaleDateString() : 'No end date'}</span>
-          </div>
-          <button onClick={() => onDeletePromotion(businessId, promo._id)} className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-destructive/10 text-destructive text-sm hover:bg-destructive/20 transition-all">
-            <Trash2 className="h-4 w-4" /> Delete
-          </button>
-        </div>
-      ))}
-    </div>
-  );
-}

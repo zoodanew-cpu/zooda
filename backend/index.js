@@ -2418,7 +2418,7 @@ app.get("/api/post/:postId/comments", async (req, res) => {
     }
 
     const post = await Post.findById(postId)
-      .populate('commentsList.userId', 'firstName lastName email avatar username')
+      .populate('commentsList.userId', 'name email avatar username')
       .select('commentsList commentsCount');
 
     if (!post) {
@@ -4296,7 +4296,36 @@ app.get("/api/dashboard/company/:companyId", async (req, res) => {
     });
   }
 });
+// Express.js routes
+app.get('/api/businesses/:businessId/posts', async (req, res) => {
+  try {
+    const posts = await Post.find({ businessId: req.params.businessId })
+      .sort({ createdAt: -1 });
+    res.json({ posts });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 
+app.get('/api/businesses/:businessId/products', async (req, res) => {
+  try {
+    const products = await Product.find({ businessId: req.params.businessId })
+      .sort({ createdAt: -1 });
+    res.json({ products });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/businesses/:businessId/promotions', async (req, res) => {
+  try {
+    const promotions = await Promotion.find({ businessId: req.params.businessId })
+      .sort({ createdAt: -1 });
+    res.json({ promotions });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {

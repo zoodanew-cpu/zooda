@@ -197,7 +197,7 @@ const DashboardScreen = ({ existingBusiness, user, notify }: DashboardScreenProp
           delay={0}
         />
         <StatCard
-          title="Clicks"
+          title="Website Clicks"
           value={clicks}
           icon={<BarChart3 size={24} />}
           gradient="success"

@@ -1769,10 +1769,25 @@ const CompanyListItem = ({
   };
 
   /* ===============================
-     VISIT SITE
+     VISIT SITE WITH ANALYTICS TRACKING
   ================================ */
-  const handleVisit = (e: React.MouseEvent) => {
+  const handleVisit = async (e: React.MouseEvent) => {
     e.stopPropagation();
+    
+    try {
+      // Track the visit site click
+      await axios.post(`${API_BASE_URL}/api/analytics/visit`, {
+        companyId: company._id,
+        userId: user?._id,
+        url: company.siteUrl,
+        type: 'external_link'
+      });
+    } catch (error) {
+      // Silent fail - don't prevent user from visiting site
+      console.error('Visit tracking error:', error);
+    }
+    
+    // Open site in new tab
     window.open(company.siteUrl, "_blank");
   };
 
@@ -1784,6 +1799,7 @@ const CompanyListItem = ({
       await axios.post(`${API_BASE_URL}/api/analytics/click`, {
         companyId: company._id,
         userId: user?._id,
+        type: 'company_card'
       });
     } catch {
       // silent fail
@@ -1868,33 +1884,30 @@ const CompanyListPage = ({
   const [currentPopupPromotion, setCurrentPopupPromotion] =
     useState<Promotion | null>(null);
   const [usedPromotions, setUsedPromotions] = useState<string[]>([]);
-  const [showLoginModal, setShowLoginModal] = useState(false); // ✅ Add login modal state
+  const [showLoginModal, setShowLoginModal] = useState(false);
 
-  // ✅ Fetch categories from backend
+  // Fetch categories from backend
   const fetchCategories = async () => {
     try {
       const response = await fetch(`${API_BASE_URL}/api/admin/categories`);
       const data = await response.json();
       
       if (Array.isArray(data)) {
-        // Extract category names from the response
         const categoryNames = data.map((cat: any) => cat.name);
         setCategories(["All", ...categoryNames]);
       } else if (data.success && Array.isArray(data.categories)) {
         const categoryNames = data.categories.map((cat: any) => cat.name);
         setCategories(["All", ...categoryNames]);
       } else {
-        // Fallback to default categories if API fails
         setCategories(["All", "Ecommerce", "LMS", "Technology", "Food", "Fashion"]);
       }
     } catch (err) {
       console.error("Error fetching categories:", err);
-      // Fallback to default categories
       setCategories(["All", "Ecommerce", "LMS", "Technology", "Food", "Fashion"]);
     }
   };
 
-  // ✅ Fetch subcategories based on selected category
+  // Fetch subcategories based on selected category
   const fetchSubcategories = async (category: string) => {
     if (category === "All") {
       setSubcategories(["All"]);
@@ -1912,14 +1925,12 @@ const CompanyListPage = ({
         categoriesData = data.categories;
       }
 
-      // Find the selected category and get its subcategories
       const selectedCat = categoriesData.find((cat: any) => cat.name === category);
       
       if (selectedCat && Array.isArray(selectedCat.subcategories)) {
         const subcategoryNames = selectedCat.subcategories.map((sub: any) => sub.name);
         setSubcategories(["All", ...subcategoryNames]);
       } else {
-        // If no subcategories found, use default ones
         setSubcategories(["All", "General"]);
       }
     } catch (err) {
@@ -1928,7 +1939,7 @@ const CompanyListPage = ({
     }
   };
 
-  // ✅ Filter active promotions based on displayType
+  // Filter active promotions based on displayType
   const bannerPromotions = allPromotions.filter((promo) => {
     const isActive = promo.isActive && new Date(promo.endDate) > new Date();
     const isBanner = promo.displayType === "banner" || promo.type === "banner";
@@ -1941,7 +1952,7 @@ const CompanyListPage = ({
     return isActive && isPopup && !usedPromotions.includes(promo._id!);
   });
 
-  // ✅ Show popup promotion on mount
+  // Show popup promotion on mount
   useEffect(() => {
     if (popupPromotions.length > 0 && !showPromotionPopup) {
       const availablePopup = popupPromotions[0];
@@ -1953,17 +1964,17 @@ const CompanyListPage = ({
     }
   }, [popupPromotions.length, showPromotionPopup]);
 
-  // ✅ Fetch categories on component mount
+  // Fetch categories on component mount
   useEffect(() => {
     fetchCategories();
   }, []);
 
-  // ✅ Fetch subcategories when category changes
+  // Fetch subcategories when category changes
   useEffect(() => {
     fetchSubcategories(selectedCategory);
   }, [selectedCategory]);
 
-  // ✅ Fetch all businesses once (no category filter)
+  // Fetch all businesses once (no category filter)
   useEffect(() => {
     const fetchAllCompanies = async () => {
       try {
@@ -1989,7 +2000,6 @@ const CompanyListPage = ({
 
                 const followerCount = parseInt(item.followers) || 1000;
 
-                // Get engagement rate from backend - assuming it's already calculated
                 const engagementRate = item.engagementRate || 0.0;
 
                 return {
@@ -2054,7 +2064,7 @@ const CompanyListPage = ({
     fetchAllCompanies();
   }, []);
 
-  // ✅ Local filtering
+  // Local filtering
   const filteredCompanies = React.useMemo(() => {
     let list = [...allCompanies];
 
@@ -2075,7 +2085,7 @@ const CompanyListPage = ({
     }
   }, [allCompanies, selectedCategory, selectedSubcategory, activeTab]);
 
-  // ✅ Insert banner after every 3 companies
+  // Insert banner after every 3 companies
   const zigzagContent = React.useMemo(() => {
     const content: Array<Company | Promotion> = [];
     let bannerIndex = 0;
@@ -2108,19 +2118,17 @@ const CompanyListPage = ({
   const handleCategoryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newCategory = e.target.value;
     setSelectedCategory(newCategory);
-    setSelectedSubcategory("All"); // Reset subcategory when category changes
+    setSelectedSubcategory("All");
   };
 
-  // ✅ Handle login request
+  // Handle login request
   const handleLoginRequest = () => {
     setShowLoginModal(true);
   };
 
-  // ✅ Handle successful login
+  // Handle successful login
   const handleLoginSuccess = (userData: User) => {
     setShowLoginModal(false);
-    // You might want to refresh follow status after login
-    // The follow status will automatically update when user data changes
   };
 
   if (loading)
@@ -2206,7 +2214,7 @@ const CompanyListPage = ({
                       }}
                       onSelectCompany={onSelectCompany}
                       user={user}
-                      onLoginClick={handleLoginRequest} // ✅ Pass login handler
+                      onLoginClick={handleLoginRequest}
                     />
                   </div>
                 );
@@ -2238,21 +2246,18 @@ const CompanyListPage = ({
         )}
       </main>
 
-      {/* ✅ Login Modal */}
+      {/* Login Modal */}
       <LoginModal
         isOpen={showLoginModal}
         onClose={() => setShowLoginModal(false)}
         onLogin={handleLoginSuccess}
         onOpenRegister={() => {
-          // If you have a register modal, handle it here
           setShowLoginModal(false);
-          // You can add your register modal opening logic here
         }}
       />
     </>
   );
 };
-
 const comstyles = `
 .company-list-container {
   max-width: 100%;
@@ -3337,7 +3342,7 @@ const PostGridItem = ({
                       postComments.map((comment, index) => (
                         <div key={index} className="comment-item">
                           <strong className="comment-username">
-                            {comment.userId?.email || 'User'}
+                            {comment.userId?.name }
                           </strong>
                           <span className="comment-text">{comment.text}</span>
                         </div>
@@ -4925,6 +4930,7 @@ const LoginModal = ({ isOpen, onClose, onLogin, onOpenRegister }: LoginModalProp
 };
 
 
+
 // ---------------- REGISTER MODAL ----------------
 interface RegisterModalProps {
   isOpen: boolean;
@@ -4999,7 +5005,8 @@ const RegisterModal = ({
     setRegisterLoading(true);
 
     try {
-      const res = await axios.post(`${API_BASE_URL}/api/auth/register`, {
+      // First, register the user
+      const registerRes = await axios.post(`${API_BASE_URL}/api/auth/register`, {
         name,
         email,
         mobile,
@@ -5007,23 +5014,59 @@ const RegisterModal = ({
         interests,
       });
 
-      const userData = res.data.user || res.data.client || res.data;
+      // Get user data from registration response
+      const userData = registerRes.data.user || registerRes.data.client || registerRes.data;
 
-      const userToStore: User = {
-        _id: userData._id,
-        name: userData.name,
-        email: userData.email,
-        mobile: userData.mobile,
-        isLoggedIn: false,
-      };
+      // Now automatically log in the user after successful registration
+      try {
+        const loginRes = await axios.post(`${API_BASE_URL}/api/auth/login`, {
+          email,
+          password,
+        });
 
-      localStorage.setItem(
-        "recentRegisteredUser",
-        JSON.stringify(userToStore)
-      );
+        const loginUserData = loginRes.data.user || userData;
+        const token = loginRes.data.token;
 
-      onRegister(userToStore);
-      onClose();
+        const userToStore: User = {
+          _id: loginUserData._id,
+          name: loginUserData.name,
+          email: loginUserData.email,
+          mobile: loginUserData.mobile,
+          isLoggedIn: true,
+        };
+
+        // Store in localStorage (same as login)
+        localStorage.setItem("user", JSON.stringify(userToStore));
+        if (token) localStorage.setItem("authToken", token);
+
+        // Call onRegister to update parent state
+        onRegister(userToStore);
+        onClose();
+
+        // Optional: Show success message
+        alert("Registration successful! You are now logged in.");
+
+      } catch (loginErr: any) {
+        // If auto-login fails, still register was successful
+        console.warn("Auto-login failed after registration:", loginErr);
+        
+        const userToStore: User = {
+          _id: userData._id,
+          name: userData.name,
+          email: userData.email,
+          mobile: userData.mobile,
+          isLoggedIn: false,
+        };
+
+        // Store user data for manual login later
+        localStorage.setItem("user", JSON.stringify(userToStore));
+        
+        // Show message asking user to login manually
+        alert("Registration successful! Please login with your credentials.");
+        onClose();
+        onOpenLogin(); // Switch to login modal
+      }
+
     } catch (err: any) {
       setError(err.response?.data?.message || "Registration failed");
     } finally {
@@ -5147,7 +5190,7 @@ const RegisterModal = ({
             className="btn btn-solid register-btn"
             disabled={registerLoading || loading}
           >
-            {registerLoading ? "Creating..." : "Register"}
+            {registerLoading ? "Creating Account..." : "Register"}
           </button>
         </form>
 
