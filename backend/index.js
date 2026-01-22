@@ -812,103 +812,232 @@ app.get('/api/profile/:businessid', async (req, res) => {
     });
   }
 });
-app.get('/api/dashboard/:businessid', async (req, res) => {
+app.get("/api/dashboard/:businessId", async (req, res) => {
   try {
-    const { businessid } = req.params;
+    const { businessId } = req.params;
 
-    // ✅ 1. Verify business exists
-    const business = await Business.findById(businessid);
+    // ✅ days filter (default 7)
+    const days = Math.max(1, Math.min(parseInt(req.query.days || "7", 10), 365));
+    const fromDate = new Date();
+    fromDate.setDate(fromDate.getDate() - days);
+
+    const businessObjectId = new mongoose.Types.ObjectId(businessId);
+
+    // ✅ 1) Verify business exists
+    const business = await Business.findById(businessId).select(
+      "businessName businessCategory createdAt followers"
+    );
+
     if (!business) {
       return res.status(404).json({
         success: false,
-        message: 'Business not found',
+        message: "Business not found",
       });
     }
 
-    // ✅ 2. Get basic counts
-    const totalPosts = await Post.countDocuments({ business: businessid });
-    const totalProducts = await Product.countDocuments({ business: businessid });
-    const totalPromotions = await Promotion.countDocuments({ business: businessid, isActive: true });
-    const followers = business.followers ? business.followers.length : 0;
+    // ✅ match filter for time range
+    const postMatch = {
+      business: businessObjectId,
+      createdAt: { $gte: fromDate },
+    };
 
-    // ✅ 3. Calculate engagement + revenue
-    const posts = await Post.find({ business: businessid });
-    let totalEngagement = 0;
-    let totalRevenue = 0;
+    const productMatch = {
+      business: businessObjectId,
+      createdAt: { $gte: fromDate },
+    };
 
-    posts.forEach((post) => {
-      const likes = post.likesList ? post.likesList.length : 0;
-      const comments = post.commentsList ? post.commentsList.length : 0;
-      const shares = post.shares || 0;
-      totalEngagement += likes + comments + shares;
-    });
+    const promoMatch = {
+      business: businessObjectId,
+      createdAt: { $gte: fromDate },
+      isActive: true,
+    };
 
-    const products = await Product.find({ business: businessid });
-    products.forEach((product) => {
-      const sales = product.sales || 0;
-      const price = product.price || 0;
-      totalRevenue += sales * price;
-    });
+    const analyticsMatch = {
+      business: businessObjectId,
+      createdAt: { $gte: fromDate },
+    };
 
-    // ✅ 4. Recent Activity: Posts + Products
-    const recentPosts = await Post.find({ business: businessid })
-      .sort({ createdAt: -1 })
-      .limit(3)
-      .populate('user', 'firstName lastName')
-      .select('content createdAt likesList commentsList shares');
+    // ✅ 2) Run everything in parallel
+    const [
+      // A) Posts stats: totalPosts + engagement
+      postMetricsResult,
 
-    const recentProducts = await Product.find({ business: businessid })
-      .sort({ createdAt: -1 })
-      .limit(2)
-      .select('name createdAt sales');
+      // B) Products stats: totalProducts + revenue
+      productStatsResult,
 
-    const recentActivity = [
-      ...recentPosts.map((post) => ({
-        type: 'post',
-        description: `New post: "${post.content.substring(0, 30)}..."`,
-        engagement: `${post.likesList?.length || 0} likes, ${post.commentsList?.length || 0} comments`,
-        time: post.createdAt,
-      })),
-      ...recentProducts.map((product) => ({
-        type: 'product',
-        description: `New product added: ${product.name}`,
-        engagement: `${product.sales || 0} sales`,
-        time: product.createdAt,
-      })),
-    ].sort((a, b) => new Date(b.time) - new Date(a.time));
+      // C) Promotions count
+      totalPromotions,
 
-    // ✅ 5. Platform-wise engagement (if platforms exist)
-    const platformStats = await Post.aggregate([
-      { $match: { business: new mongoose.Types.ObjectId(businessid) } },
-      { $unwind: { path: '$platforms', preserveNullAndEmptyArrays: true } },
-      {
-        $group: {
-          _id: '$platforms',
-          count: { $sum: 1 },
-          totalEngagement: {
-            $sum: {
-              $add: [
-                { $size: { $ifNull: ['$likesList', []] } },
-                { $size: { $ifNull: ['$commentsList', []] } },
-                { $ifNull: ['$shares', 0] },
-              ],
+      // D) Recent posts
+      recentPosts,
+
+      // E) Recent products
+      recentProducts,
+
+      // F) Platform performance
+      platformStats,
+
+      // G) Analytics (impressions/clicks)
+      analyticsResult,
+    ] = await Promise.all([
+      // A) POST METRICS
+      Post.aggregate([
+        { $match: postMatch },
+        {
+          $group: {
+            _id: null,
+            totalPosts: { $sum: 1 },
+            totalEngagement: {
+              $sum: {
+                $add: [
+                  { $size: { $ifNull: ["$likesList", []] } },
+                  { $size: { $ifNull: ["$commentsList", []] } },
+                  { $ifNull: ["$shares", 0] },
+                ],
+              },
             },
           },
         },
-      },
+        { $project: { _id: 0, totalPosts: 1, totalEngagement: 1 } },
+      ]),
+
+      // B) PRODUCT STATS (count + revenue)
+      Product.aggregate([
+        { $match: productMatch },
+        {
+          $group: {
+            _id: null,
+            totalProducts: { $sum: 1 },
+
+            // ✅ revenue: if your schema has sales.revenue use it,
+            // else fallback to (sales * price)
+            totalRevenue: {
+              $sum: {
+                $cond: [
+                  { $ifNull: ["$sales.revenue", false] },
+                  "$sales.revenue",
+                  { $multiply: [{ $ifNull: ["$sales", 0] }, { $ifNull: ["$price", 0] }] },
+                ],
+              },
+            },
+          },
+        },
+        { $project: { _id: 0, totalProducts: 1, totalRevenue: 1 } },
+      ]),
+
+      // C) ACTIVE PROMOTIONS (in date range)
+      Promotion.countDocuments(promoMatch),
+
+      // D) RECENT POSTS
+      Post.find(postMatch)
+        .sort({ createdAt: -1 })
+        .limit(5)
+        .select("content createdAt likesList commentsList shares"),
+
+      // E) RECENT PRODUCTS
+      Product.find(productMatch)
+        .sort({ createdAt: -1 })
+        .limit(5)
+        .select("name createdAt sales price"),
+
+      // F) PLATFORM PERFORMANCE
+      Post.aggregate([
+        { $match: postMatch },
+        { $unwind: { path: "$platforms", preserveNullAndEmptyArrays: true } },
+        {
+          $group: {
+            _id: { $ifNull: ["$platforms", "unknown"] },
+            count: { $sum: 1 },
+            totalEngagement: {
+              $sum: {
+                $add: [
+                  { $size: { $ifNull: ["$likesList", []] } },
+                  { $size: { $ifNull: ["$commentsList", []] } },
+                  { $ifNull: ["$shares", 0] },
+                ],
+              },
+            },
+          },
+        },
+        { $sort: { count: -1 } },
+      ]),
+
+      // G) ANALYTICS
+      Analytics.aggregate([
+        { $match: analyticsMatch },
+        {
+          $group: {
+            _id: null,
+            impressions: {
+              $sum: { $cond: [{ $eq: ["$type", "impression"] }, 1, 0] },
+            },
+            clicks: {
+              $sum: { $cond: [{ $eq: ["$type", "click"] }, 1, 0] },
+            },
+            // if you are tracking external visits as "visit"
+            visits: {
+              $sum: { $cond: [{ $eq: ["$type", "visit"] }, 1, 0] },
+            },
+          },
+        },
+        { $project: { _id: 0, impressions: 1, clicks: 1, visits: 1 } },
+      ]),
     ]);
 
-    // ✅ 6. Respond with clean dashboard data
+    const postMetrics = postMetricsResult?.[0] || { totalPosts: 0, totalEngagement: 0 };
+    const productStats = productStatsResult?.[0] || { totalProducts: 0, totalRevenue: 0 };
+    const analytics = analyticsResult?.[0] || { impressions: 0, clicks: 0, visits: 0 };
+
+    // Followers (lifetime)
+    const followersCount = Array.isArray(business.followers) ? business.followers.length : 0;
+
+    // ✅ CTR (click-through rate)
+    const ctr =
+      analytics.impressions > 0
+        ? Number(((analytics.clicks / analytics.impressions) * 100).toFixed(2))
+        : 0;
+
+    // ✅ Recent Activity (posts + products)
+    const formattedPostActivity = recentPosts.map((post) => ({
+      type: "post",
+      description: `New post: "${(post.content || "").substring(0, 30)}${
+        (post.content || "").length > 30 ? "..." : ""
+      }"`,
+      engagement: `${post.likesList?.length || 0} likes, ${post.commentsList?.length || 0} comments`,
+      time: post.createdAt,
+    }));
+
+    const formattedProductActivity = recentProducts.map((product) => ({
+      type: "product",
+      description: `New product added: ${product.name}`,
+      engagement: `${product.sales || 0} sales`,
+      time: product.createdAt,
+    }));
+
+    const recentActivity = [...formattedPostActivity, ...formattedProductActivity].sort(
+      (a, b) => new Date(b.time) - new Date(a.time)
+    );
+
+    // ✅ Respond
     res.json({
       success: true,
+      range: {
+        days,
+        from: fromDate,
+        to: new Date(),
+      },
       dashboard: {
         stats: {
-          totalPosts,
-          totalEngagement,
-          totalProducts,
+          totalPosts: postMetrics.totalPosts,
+          totalEngagement: postMetrics.totalEngagement,
+          totalProducts: productStats.totalProducts,
           totalPromotions,
-          followers,
-          totalRevenue: Math.round(totalRevenue * 100) / 100 || 0,
+          followers: followersCount,
+          totalRevenue: Math.round((productStats.totalRevenue || 0) * 100) / 100,
+          impressions: analytics.impressions || 0,
+          clicks: analytics.clicks || 0,
+          visits: analytics.visits || 0,
+          ctr,
         },
         recentActivity,
         platformPerformance: platformStats || [],
@@ -920,13 +1049,14 @@ app.get('/api/dashboard/:businessid', async (req, res) => {
       },
     });
   } catch (error) {
-    console.error('Get dashboard by business ID error:', error);
+    console.error("Get dashboard by business ID error:", error);
     res.status(500).json({
       success: false,
-      message: 'Server error while fetching dashboard data',
+      message: "Server error while fetching dashboard data",
     });
   }
 });
+
 
 app.put('/api/profile', async (req, res) => {
   try {
@@ -1457,62 +1587,84 @@ app.get('/api/posts', async (req, res) => {
   }
 });
 app.get("/api/post/:businessId", async (req, res) => {
-  try {
-    const { businessId } = req.params;
+  try {
+    const { businessId } = req.params;
 
-    if (!businessId) {
-      return res.status(400).json({ message: "Business ID is required" });
-    }
+    if (!businessId) {
+      return res.status(400).json({ success: false, message: "Business ID is required" });
+    }
 
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const skip = (page - 1) * limit;
+    // ✅ pagination
+    const page = Math.max(parseInt(req.query.page || "1", 10), 1);
+    const limit = Math.min(Math.max(parseInt(req.query.limit || "10", 10), 1), 50);
+    const skip = (page - 1) * limit;
 
-    const posts = await Post.find({ business: businessId })
-      .skip(skip)
-      .limit(limit)
-      .exec();
+    // ✅ optional filters
+    const status = req.query.status; // draft|scheduled|published|failed
+    const days = req.query.days ? parseInt(req.query.days, 10) : null;
 
-    // Fetch client details for each post likes
+    const query = { business: businessId };
 
-    const updatedPosts = await Promise.all(posts.map(async (post) => {
-      const likesWithUser = await Promise.all(
-        post.likesList.map(async (like) => {
-          try {
-            const client = await Client.findById(like._id).select("name email");
-            return client ? { _id: like._id, name: client.name, email: client.email } : null;
-          } catch {
-            return null;
-          }
-        })
-      );
+    if (status) query.status = status;
 
-      return {
-        ...post.toObject(),
-        likesList: likesWithUser.filter(like => like !== null)
-      };
-    }));
+    if (days && !Number.isNaN(days) && days > 0) {
+      const fromDate = new Date();
+      fromDate.setDate(fromDate.getDate() - days);
+      query.createdAt = { $gte: fromDate };
+    }
 
-    const total = await Post.countDocuments({ business: businessId });
+    // ✅ Fetch posts + populate like user + comment user
+    const posts = await Post.find(query)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .populate({
+        path: "likesList.userId",
+        model: "Client",
+        select: "name email avatar", // add fields you have
+      })
+      .populate({
+        path: "commentsList.userId",
+        model: "Client",
+        select: "name email avatar",
+      })
+      .lean();
 
-    res.status(200).json({
-      success: true,
-      posts: updatedPosts,
-      pagination: {
-        page,
-        pages: Math.ceil(total / limit),
-        total,
-      }
-    });
+    const total = await Post.countDocuments(query);
 
-  } catch (error) {
-    console.error("Error fetching posts by business:", error);
-    res.status(500).json({
-      success: false,
-      message: "Server error while fetching posts"
-    });
-  }
+    // ✅ shape response: likesList => [{ userId: {..client} }]
+    // If you want cleaner array like [{_id,name,email}] then transform:
+    const formattedPosts = posts.map((p) => ({
+      ...p,
+      likesList: (p.likesList || [])
+        .map((l) => l?.userId)
+        .filter(Boolean), // now likesList becomes array of client objects
+      commentsList: (p.commentsList || []).map((c) => ({
+        ...c,
+        user: c.userId || null,
+        userId: undefined, // optional: remove raw userId
+      })),
+    }));
+
+    return res.status(200).json({
+      success: true,
+      posts: formattedPosts,
+      pagination: {
+        page,
+        limit,
+        pages: Math.ceil(total / limit),
+        total,
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching posts by business:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error while fetching posts",
+    });
+  }
 });
+
 
 // GET /api/business/:businessId/followers
 app.get("/api/business/:businessId/followers", async (req, res) => {
@@ -2191,128 +2343,6 @@ app.get('/api/business/all', async (req, res) => {
   }
 });
 
-// --- GET /api/dashboard/:businessId (UPDATED CODE) ---
-app.get('/api/dashboard/:businessId', async (req, res) => {
-  try {
-    const { businessId } = req.params;
-    const businessObjectId = new mongoose.Types.ObjectId(businessId);
-
-    const business = await Business.findById(businessId)
-      .select('businessName businessCategory createdAt engagementRate');
-
-    if (!business) {
-      return res.status(404).json({
-        success: false,
-        message: 'Business not found'
-      });
-    }
-
-    const [
-      metricsResult,
-      revenueResult,
-      totalProducts,
-      recentPosts,
-      analyticsResult
-    ] = await Promise.all([
-
-      // A. POST METRICS
-      Post.aggregate([
-        { $match: { business: businessObjectId } },
-        {
-          $group: {
-            _id: null,
-            totalPosts: { $sum: 1 },
-            totalEngagement: {
-              $sum: {
-                $add: [
-                  { $size: { $ifNull: ['$likesList', []] } },
-                  { $size: { $ifNull: ['$commentsList', []] } },
-                  { $ifNull: ['$shares', 0] }
-                ]
-              }
-            }
-          }
-        },
-        { $project: { _id: 0, totalPosts: 1, totalEngagement: 1 } }
-      ]),
-
-      // B. REVENUE
-      Product.aggregate([
-        { $match: { business: businessObjectId } },
-        { $group: { _id: null, totalRevenue: { $sum: '$sales.revenue' } } }
-      ]),
-
-      // C. PRODUCT COUNT
-      Product.countDocuments({ business: businessId }),
-
-      // D. RECENT POSTS
-      Post.find({ business: businessObjectId })
-        .sort({ createdAt: -1 })
-        .limit(10)
-        .select('content createdAt likesList commentsList'),
-
-      // E. ANALYTICS (IMPRESSIONS & CLICKS)
-      Analytics.aggregate([
-        { $match: { business: businessObjectId } },
-        {
-          $group: {
-            _id: null,
-            impressions: {
-              $sum: {
-                $cond: [{ $eq: ['$type', 'impression'] }, 1, 0]
-              }
-            },
-            clicks: {
-              $sum: {
-                $cond: [{ $eq: ['$type', 'click'] }, 1, 0]
-              }
-            }
-          }
-        }
-      ])
-    ]);
-
-    const metrics = metricsResult[0] || { totalPosts: 0, totalEngagement: 0 };
-    const revenue = revenueResult[0] || { totalRevenue: 0 };
-    const analytics = analyticsResult[0] || { impressions: 0, clicks: 0 };
-
-    // FORMAT ACTIVITY
-    const formattedActivity = recentPosts.map(post => ({
-      type: 'post',
-      description: `New post: "${post.content.substring(0, 30)}${post.content.length > 30 ? '...' : ''}"`,
-      engagement: `${post.likesList.length} likes, ${post.commentsList.length} comments`,
-      time: post.createdAt
-    }));
-
-    // SEND RESPONSE
-    res.json({
-      success: true,
-      dashboard: {
-        stats: {
-          totalPosts: metrics.totalPosts,
-          totalEngagement: metrics.totalEngagement,
-          totalProducts: totalProducts,
-          totalRevenue: Math.round((revenue.totalRevenue || 0) * 100) / 100,
-          impressions: analytics.impressions,
-          clicks: analytics.clicks
-        },
-        recentActivity: formattedActivity,
-        business: {
-          name: business.businessName,
-          category: business.businessCategory,
-          joinedDate: business.createdAt
-        }
-      }
-    });
-
-  } catch (error) {
-    console.error('Get dashboard by business ID error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error while fetching dashboard data'
-    });
-  }
-});
 
 
 app.post("/api/follow/:businessId", async (req, res) => {
@@ -3302,28 +3332,6 @@ app.delete("/api/post/:postId", authMiddleware, async (req, res) => {
     res.status(500).json({ success: false, message: "Failed to delete post" });
   }
 });
-
-// =========================================================================
-//                             ADMIN ROUTES
-// =========================================================================
-
-// Get posts for a specific business
-app.get('/api/post/:businessId', async (req, res) => {
-  try {
-    const { businessId } = req.params;
-    
-    const posts = await Post.find({ business: businessId })
-      .sort({ createdAt: -1 })
-      .lean();
-
-    res.json(posts);
-  } catch (error) {
-    console.error('Get business posts error:', error);
-    res.status(500).json({ message: 'Server error fetching posts' });
-  }
-});
-
-// Get products for a specific business
 app.get('/api/product/:businessId', async (req, res) => {
   try {
     const { businessId } = req.params;
@@ -3338,8 +3346,6 @@ app.get('/api/product/:businessId', async (req, res) => {
     res.status(500).json({ message: 'Server error fetching products' });
   }
 });
-
-// Get promotions for a specific business
 app.get('/api/promotions/:businessId', async (req, res) => {
   try {
     const { businessId } = req.params;
@@ -3354,8 +3360,6 @@ app.get('/api/promotions/:businessId', async (req, res) => {
     res.status(500).json({ message: 'Server error fetching promotions' });
   }
 });
-
-// Update the main businesses endpoint to not populate posts, products, promotions
 app.get('/api/admin/businesses', async (req, res) => {
   try {
     const { status } = req.query;

@@ -408,7 +408,9 @@ body {
   object-fit: cover;
   flex-shrink: 0;
 }
-
+.company-row img{
+  object-fit: cover;
+}
 .company-info {
   flex: 1;
   min-width: 120px;
@@ -479,6 +481,7 @@ body {
   .company-logo {
     width: 50px;
     height: 50px;
+    object-fit: cover;
   }
 
   .company-name {

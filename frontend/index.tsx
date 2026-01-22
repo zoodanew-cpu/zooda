@@ -2009,8 +2009,7 @@ const CompanyListPage = ({
                   description:
                     item.businessDescription || "No description available",
                   followers:
-                    item.followers ||
-                    Math.floor(Math.random() * 5000).toString(),
+                    item.followers,
                   trend: "Rising",
                   siteUrl: item.businessWebsite || "#",
                   logoUrl:
@@ -2031,9 +2030,8 @@ const CompanyListPage = ({
                   description:
                     item.businessDescription || "No description available",
                   followers:
-                    item.followers ||
-                    Math.floor(Math.random() * 5000).toString(),
-                  trend: "Rising",
+                    item.followers ,
+                    trend: "Rising",
                   siteUrl: item.businessWebsite || "#",
                   logoUrl: item.logoUrl,
                   posts: [],
@@ -4438,33 +4436,38 @@ const ProfilePage = ({
                 </div>
 
                 <section className="content-grid">
-                  {filteredProducts.length > 0 ? (
-                    filteredProducts.map((product) => (
-                      <div key={product._id} className="grid-item product-item">
-                        <a
-                          href={product.productLink}
-                          target="_blank"
-                          className="product-link"
-                        >
-                          <img
-                            src={product.image?.url || product.imageUrl}
-                            className="product-image"
-                            onError={(e) =>
-                              (e.currentTarget.src =
-                                `https://picsum.photos/400/400?random=${product._id}`)
-                            }
-                          />
+                 {filteredProducts.length > 0 ? (
+  filteredProducts.map((product) => (
+    <div key={product._id} className="grid-item product-item">
+      <a
+        href={product.productLink}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="product-link"
+      >
+        <div className="product-image-wrap">
+          <img
+            src={product.image?.url || product.imageUrl}
+            alt={product.name}
+            className="product-image"
+            onError={(e) =>
+              (e.currentTarget.src =
+                `https://picsum.photos/400/400?random=${product._id}`)
+            }
+          />
+        </div>
+      </a>
 
-                          <div className="product-info">
-                            <p className="product-name">{product.name}</p>
-                            <p className="product-price">₹{product.price}</p>
-                          </div>
-                        </a>
-                      </div>
-                    ))
-                  ) : (
-                    <p>No products yet.</p>
-                  )}
+      {/* ⬇ Content BELOW image */}
+      <div className="product-info">
+        <p className="product-name">{product.name}</p>
+        <p className="product-price">₹{product.price}</p>
+      </div>
+    </div>
+  ))
+) : (
+  <p>No products yet.</p>
+)}
                 </section>
               </>
             )}
@@ -5401,9 +5404,8 @@ const App = () => {
                   description:
                     item.businessDescription || "No description available",
                   followers:
-                    item.followers ||
-                    Math.floor(Math.random() * 5000).toString(),
-                  trend: "Rising",
+                    item.followers,
+                    trend: "Rising",
                   siteUrl: item.businessWebsite || "#",
                   logoUrl:
                     item.logoUrl,

@@ -1,23 +1,40 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { motion } from 'framer-motion';
-import { BarChart3, Heart, ShoppingBag, Tag, Users, Calendar, RefreshCw } from 'lucide-react';
-import axios from '@/lib/api';
-import LoadingSpinner from '@/components/ui/LoadingSpinner';
-import StatCard from '@/components/ui/StatCard';
-import EngagementChart from '@/components/charts/EngagementChart';
-import ProductsChart from '@/components/charts/ProductsChart';
-import OverviewChart from '@/components/charts/OverviewChart';
-
+import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { motion } from "framer-motion";
+import {
+  BarChart3,
+  Heart,
+  ShoppingBag,
+  Tag,
+  Users,
+  Calendar,
+  RefreshCw,
+} from "lucide-react";
+import axios from "@/lib/api";
+import LoadingSpinner from "@/components/ui/LoadingSpinner";
+import StatCard from "@/components/ui/StatCard";
+import './DASstyles.css';
 interface DashboardScreenProps {
   existingBusiness: any;
   user: any;
   notify: (type: string, message: string) => void;
 }
 
+type RangeKey = "1d" | "7d" | "15d" | "30d";
+
+const RANGE_DAYS: Record<RangeKey, number> = {
+  "1d": 1,
+  "7d": 7,
+  "15d": 15,
+  "30d": 30,
+};
+
 const DashboardScreen = ({ existingBusiness, user, notify }: DashboardScreenProps) => {
   const [dashboardData, setDashboardData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
+
+  // ✅ NEW: range state
+  const [range, setRange] = useState<RangeKey>("7d");
 
   // NEW: analytics state
   const [analytics, setAnalytics] = useState<{
@@ -27,61 +44,100 @@ const DashboardScreen = ({ existingBusiness, user, notify }: DashboardScreenProp
   } | null>(null);
 
   const businessId = existingBusiness?._id;
-  // if companyId is different in your schema, change this accordingly
   const companyId = existingBusiness?._id;
 
+  // ✅ helper dates (optional if backend accepts "days")
+  const dateRange = useMemo(() => {
+    const days = RANGE_DAYS[range];
+    const to = new Date();
+    const from = new Date();
+    from.setDate(to.getDate() - days);
+    return { from, to, days };
+  }, [range]);
+
+  /**
+   * ✅ Fetch dashboard data with date filter
+   * Option A: send ?days=7
+   * Option B: send ?from=ISO&to=ISO
+   */
   const fetchDashboardData = useCallback(async () => {
     if (!businessId) {
-      setError('Business ID is missing.');
+      setError("Business ID is missing.");
       setLoading(false);
       return;
     }
 
     try {
       setLoading(true);
-      const response = await axios.get(`/dashboard/${businessId}`);
+      setError("");
 
-      if (response.data && response.data.success && response.data.dashboard) {
+      // 🔥 Choose ONE (recommended: days)
+      const response = await axios.get(`/dashboard/${businessId}`, {
+        params: {
+          days: dateRange.days, // ✅ backend should filter by last N days
+          // from: dateRange.from.toISOString(),
+          // to: dateRange.to.toISOString(),
+        },
+      });
+
+      if (response.data?.success && response.data.dashboard) {
         setDashboardData(response.data.dashboard);
-        notify('success', 'Dashboard data loaded!');
       } else {
-        setError('Failed to load dashboard data.');
-        notify('error', 'Dashboard load failed.');
+        setError("Failed to load dashboard data.");
+        notify("error", "Dashboard load failed.");
       }
     } catch (err: any) {
-      const errorMessage = err.response?.data?.message || 'Error loading dashboard data.';
+      const errorMessage = err.response?.data?.message || "Error loading dashboard data.";
       setError(errorMessage);
-      notify('error', errorMessage);
+      notify("error", errorMessage);
     } finally {
       setLoading(false);
     }
-  }, [businessId, notify]);
+  }, [businessId, dateRange.days, notify]);
 
-  // NEW: fetch company analytics (impressions, clicks, ctr)
+  /**
+   * ✅ Fetch company analytics with same date filter
+   */
   const fetchCompanyAnalytics = useCallback(async () => {
     if (!companyId) return;
 
     try {
-      const res = await axios.get(`/analytics/company/${companyId}`);
+      const res = await axios.get(`/analytics/company/${companyId}`, {
+        params: {
+          days: dateRange.days,
+          // from: dateRange.from.toISOString(),
+          // to: dateRange.to.toISOString(),
+        },
+      });
+
       if (res.data?.success) {
         setAnalytics({
           impressions: res.data.impressions || 0,
           clicks: res.data.clicks || 0,
           ctr: res.data.ctr || 0,
         });
+      } else {
+        setAnalytics({ impressions: 0, clicks: 0, ctr: 0 });
       }
     } catch (err: any) {
-      console.error('Analytics fetch error:', err);
-      notify('error', 'Failed to load analytics');
+      console.error("Analytics fetch error:", err);
+      notify("error", "Failed to load analytics");
+      setAnalytics({ impressions: 0, clicks: 0, ctr: 0 });
     }
-  }, [companyId, notify]);
+  }, [companyId, dateRange.days, notify]);
 
+  // ✅ refetch when range changes
   useEffect(() => {
-    // run both in parallel
     fetchDashboardData();
     fetchCompanyAnalytics();
   }, [fetchDashboardData, fetchCompanyAnalytics]);
 
+  const handleRefresh = () => {
+    fetchDashboardData();
+    fetchCompanyAnalytics();
+  };
+
+  // UI states
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -97,9 +153,11 @@ const DashboardScreen = ({ existingBusiness, user, notify }: DashboardScreenProp
         animate={{ opacity: 1, y: 0 }}
         className="p-8 text-center bg-destructive/5 rounded-2xl border border-destructive/20"
       >
-        <h2 className="text-2xl font-bold text-destructive mb-3">Dashboard Load Failed</h2>
+        <h2 className="text-2xl font-bold text-destructive mb-3">
+          Dashboard Load Failed
+        </h2>
         <p className="text-muted-foreground mb-6">{error}</p>
-        <button onClick={fetchDashboardData} className="btn-primary">
+        <button onClick={handleRefresh} className="btn-primary">
           <RefreshCw size={18} className="mr-2" />
           Try Again
         </button>
@@ -109,12 +167,8 @@ const DashboardScreen = ({ existingBusiness, user, notify }: DashboardScreenProp
 
   if (!dashboardData) return null;
 
-  const {
-    stats = {},
-    recentActivity = [],
-    business = {},
-    platformPerformance = [],
-  } = dashboardData;
+  const { stats = {}, recentActivity = [], business = {}, platformPerformance = [] } =
+    dashboardData;
 
   const {
     totalEngagement = 0,
@@ -126,33 +180,65 @@ const DashboardScreen = ({ existingBusiness, user, notify }: DashboardScreenProp
 
   const displayEngagement = totalEngagement > 0 ? totalEngagement : totalPosts;
 
-  // analytics values with fallbacks
   const impressions = analytics?.impressions ?? 0;
   const clicks = analytics?.clicks ?? 0;
   const ctr = analytics?.ctr ?? 0;
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      className="space-y-6"
-    >
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
           <div className="p-3 bg-primary/10 rounded-xl">
             <BarChart3 className="text-primary" size={24} />
           </div>
           <div>
             <h1 className="text-2xl font-bold text-foreground">
-              {business.name || existingBusiness?.businessName || 'Business'} Dashboard
+              {business.name || existingBusiness?.businessName || "Business"} Dashboard
             </h1>
-            <p className="text-muted-foreground text-sm">Overview of your business performance</p>
+            <p className="text-muted-foreground text-sm">
+              Overview of your business performance
+            </p>
           </div>
         </div>
-        <button onClick={() => { fetchDashboardData(); fetchCompanyAnalytics(); }} className="btn-ghost">
-          <RefreshCw size={18} />
-        </button>
+
+        {/* ✅ Range Filter + Refresh */}
+        <div className="flex items-center gap-2">
+          <div className="dashboard-range">
+            <button
+              className={`range-btn ${range === "1d" ? "active" : ""}`}
+              onClick={() => setRange("1d")}
+              type="button"
+            >
+              1 Day
+            </button>
+            <button
+              className={`range-btn ${range === "7d" ? "active" : ""}`}
+              onClick={() => setRange("7d")}
+              type="button"
+            >
+              7 Days
+            </button>
+            <button
+              className={`range-btn ${range === "15d" ? "active" : ""}`}
+              onClick={() => setRange("15d")}
+              type="button"
+            >
+              15 Days
+            </button>
+            <button
+              className={`range-btn ${range === "30d" ? "active" : ""}`}
+              onClick={() => setRange("30d")}
+              type="button"
+            >
+              1 Month
+            </button>
+          </div>
+
+          <button onClick={handleRefresh} className="btn-ghost" type="button">
+            <RefreshCw size={18} />
+          </button>
+        </div>
       </div>
 
       {/* Stats Grid */}
@@ -203,13 +289,15 @@ const DashboardScreen = ({ existingBusiness, user, notify }: DashboardScreenProp
           gradient="success"
           delay={0.1}
         />
-       
+        <StatCard
+          title="CTR"
+          value={typeof ctr === "number" ? `${ctr.toFixed(2)}%` : `${ctr}%`}
+          icon={<BarChart3 size={24} />}
+          gradient="warning"
+          delay={0.2}
+        />
       </div>
 
-    
-
-      {/* Monthly Overview */}
-   
       {/* Content Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Recent Activity */}
@@ -219,9 +307,13 @@ const DashboardScreen = ({ existingBusiness, user, notify }: DashboardScreenProp
           transition={{ delay: 0.4 }}
           className="lg:col-span-2 bg-card rounded-2xl border border-border p-6"
         >
-          <h2 className="text-lg font-semibold text-foreground mb-4 pb-3 border-b border-border">
-            Recent Activity
-          </h2>
+          <div className="flex items-center justify-between mb-4 pb-3 border-b border-border">
+            <h2 className="text-lg font-semibold text-foreground">Recent Activity</h2>
+            <span className="text-xs text-muted-foreground">
+              Last {dateRange.days} days
+            </span>
+          </div>
+
           <div className="space-y-3 max-h-[400px] overflow-y-auto scrollbar-thin">
             {recentActivity.length > 0 ? (
               recentActivity.map((activity: any, index: number) => (
@@ -233,7 +325,9 @@ const DashboardScreen = ({ existingBusiness, user, notify }: DashboardScreenProp
                   className="p-4 bg-secondary/50 rounded-xl flex items-center justify-between"
                 >
                   <div>
-                    <p className="font-medium text-sm text-foreground">{activity.description}</p>
+                    <p className="font-medium text-sm text-foreground">
+                      {activity.description}
+                    </p>
                     <p className="text-xs text-muted-foreground mt-1">
                       {new Date(activity.time).toLocaleString()}
                     </p>
@@ -241,7 +335,9 @@ const DashboardScreen = ({ existingBusiness, user, notify }: DashboardScreenProp
                 </motion.div>
               ))
             ) : (
-              <p className="text-muted-foreground text-center py-8">No recent activity.</p>
+              <p className="text-muted-foreground text-center py-8">
+                No recent activity for last {dateRange.days} days.
+              </p>
             )}
           </div>
         </motion.div>
@@ -256,26 +352,30 @@ const DashboardScreen = ({ existingBusiness, user, notify }: DashboardScreenProp
           <h2 className="text-lg font-semibold text-foreground mb-4 pb-3 border-b border-border">
             Business Details
           </h2>
+
           <div className="space-y-4">
             <div>
               <p className="text-sm text-muted-foreground">Category</p>
               <p className="font-medium text-foreground capitalize">
-                {business.category || existingBusiness?.businessCategory || 'N/A'}
+                {business.category || existingBusiness?.businessCategory || "N/A"}
               </p>
             </div>
+
             <div>
               <p className="text-sm text-muted-foreground">Owner</p>
               <p className="font-medium text-foreground">
                 {user?.firstName} {user?.lastName}
               </p>
             </div>
+
             <div>
               <p className="text-sm text-muted-foreground flex items-center gap-2">
-                <Calendar size={14} />
-                Joined
+                <Calendar size={14} /> Joined
               </p>
               <p className="font-medium text-foreground">
-                {new Date(business.joinedDate || existingBusiness?.createdAt || Date.now()).toLocaleDateString()}
+                {new Date(
+                  business.joinedDate || existingBusiness?.createdAt || Date.now()
+                ).toLocaleDateString()}
               </p>
             </div>
           </div>
@@ -287,11 +387,20 @@ const DashboardScreen = ({ existingBusiness, user, notify }: DashboardScreenProp
               </h3>
               <div className="space-y-2">
                 {platformPerformance.map((platform: any) => (
-                  <div key={platform._id} className="flex justify-between items-center p-3 bg-secondary/50 rounded-lg">
-                    <span className="text-sm font-medium capitalize text-foreground">{platform._id}</span>
+                  <div
+                    key={platform._id}
+                    className="flex justify-between items-center p-3 bg-secondary/50 rounded-lg"
+                  >
+                    <span className="text-sm font-medium capitalize text-foreground">
+                      {platform._id}
+                    </span>
                     <div className="text-right">
-                      <span className="text-xs text-muted-foreground">{platform.count} Posts</span>
-                      <span className="text-xs text-primary ml-2">({platform.totalEngagement} Engagements)</span>
+                      <span className="text-xs text-muted-foreground">
+                        {platform.count} Posts
+                      </span>
+                      <span className="text-xs text-primary ml-2">
+                        ({platform.totalEngagement} Engagements)
+                      </span>
                     </div>
                   </div>
                 ))}
