@@ -12,7 +12,8 @@ import {
 import axios from "@/lib/api";
 import LoadingSpinner from "@/components/ui/LoadingSpinner";
 import StatCard from "@/components/ui/StatCard";
-import './DASstyles.css';
+import "./DASstyles.css";
+
 interface DashboardScreenProps {
   existingBusiness: any;
   user: any;
@@ -28,25 +29,33 @@ const RANGE_DAYS: Record<RangeKey, number> = {
   "30d": 30,
 };
 
+type AnalyticsState = {
+  impressions: number;
+  clicks: number;
+  ctr: number; // always number now
+};
+
 const DashboardScreen = ({ existingBusiness, user, notify }: DashboardScreenProps) => {
   const [dashboardData, setDashboardData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  // ✅ NEW: range state
+  // ✅ range state
   const [range, setRange] = useState<RangeKey>("7d");
 
-  // NEW: analytics state
-  const [analytics, setAnalytics] = useState<{
-    impressions: number;
-    clicks: number;
-    ctr: number | string;
-  } | null>(null);
+  // ✅ analytics state (separate endpoint)
+  const [analytics, setAnalytics] = useState<AnalyticsState>({
+    impressions: 0,
+    clicks: 0,
+    ctr: 0,
+  });
+
+  // Optional: separate loading state for analytics so dashboard doesn't flicker
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
 
   const businessId = existingBusiness?._id;
-  const companyId = existingBusiness?._id;
+  const companyId = existingBusiness?._id; // if companyId is same as businessId in your system
 
-  // ✅ helper dates (optional if backend accepts "days")
   const dateRange = useMemo(() => {
     const days = RANGE_DAYS[range];
     const to = new Date();
@@ -56,9 +65,7 @@ const DashboardScreen = ({ existingBusiness, user, notify }: DashboardScreenProp
   }, [range]);
 
   /**
-   * ✅ Fetch dashboard data with date filter
-   * Option A: send ?days=7
-   * Option B: send ?from=ISO&to=ISO
+   * ✅ Fetch dashboard data with days filter
    */
   const fetchDashboardData = useCallback(async () => {
     if (!businessId) {
@@ -71,23 +78,21 @@ const DashboardScreen = ({ existingBusiness, user, notify }: DashboardScreenProp
       setLoading(true);
       setError("");
 
-      // 🔥 Choose ONE (recommended: days)
       const response = await axios.get(`/dashboard/${businessId}`, {
-        params: {
-          days: dateRange.days, // ✅ backend should filter by last N days
-          // from: dateRange.from.toISOString(),
-          // to: dateRange.to.toISOString(),
-        },
+        params: { days: dateRange.days },
       });
 
       if (response.data?.success && response.data.dashboard) {
         setDashboardData(response.data.dashboard);
       } else {
+        setDashboardData(null);
         setError("Failed to load dashboard data.");
         notify("error", "Dashboard load failed.");
       }
     } catch (err: any) {
-      const errorMessage = err.response?.data?.message || "Error loading dashboard data.";
+      const errorMessage =
+        err?.response?.data?.message || "Error loading dashboard data.";
+      setDashboardData(null);
       setError(errorMessage);
       notify("error", errorMessage);
     } finally {
@@ -96,33 +101,33 @@ const DashboardScreen = ({ existingBusiness, user, notify }: DashboardScreenProp
   }, [businessId, dateRange.days, notify]);
 
   /**
-   * ✅ Fetch company analytics with same date filter
+   * ✅ Fetch company analytics (NOW supports days filter)
    */
   const fetchCompanyAnalytics = useCallback(async () => {
     if (!companyId) return;
 
     try {
+      setAnalyticsLoading(true);
+
       const res = await axios.get(`/analytics/company/${companyId}`, {
-        params: {
-          days: dateRange.days,
-          // from: dateRange.from.toISOString(),
-          // to: dateRange.to.toISOString(),
-        },
+        params: { days: dateRange.days },
       });
 
       if (res.data?.success) {
-        setAnalytics({
-          impressions: res.data.impressions || 0,
-          clicks: res.data.clicks || 0,
-          ctr: res.data.ctr || 0,
-        });
+        const impressions = Number(res.data.impressions || 0);
+        const clicks = Number(res.data.clicks || 0);
+        const ctr = Number(res.data.ctr || 0);
+
+        setAnalytics({ impressions, clicks, ctr });
       } else {
         setAnalytics({ impressions: 0, clicks: 0, ctr: 0 });
       }
-    } catch (err: any) {
+    } catch (err) {
       console.error("Analytics fetch error:", err);
       notify("error", "Failed to load analytics");
       setAnalytics({ impressions: 0, clicks: 0, ctr: 0 });
+    } finally {
+      setAnalyticsLoading(false);
     }
   }, [companyId, dateRange.days, notify]);
 
@@ -157,7 +162,7 @@ const DashboardScreen = ({ existingBusiness, user, notify }: DashboardScreenProp
           Dashboard Load Failed
         </h2>
         <p className="text-muted-foreground mb-6">{error}</p>
-        <button onClick={handleRefresh} className="btn-primary">
+        <button onClick={handleRefresh} className="btn-primary" type="button">
           <RefreshCw size={18} className="mr-2" />
           Try Again
         </button>
@@ -167,8 +172,12 @@ const DashboardScreen = ({ existingBusiness, user, notify }: DashboardScreenProp
 
   if (!dashboardData) return null;
 
-  const { stats = {}, recentActivity = [], business = {}, platformPerformance = [] } =
-    dashboardData;
+  const {
+    stats = {},
+    recentActivity = [],
+    business = {},
+    platformPerformance = [],
+  } = dashboardData;
 
   const {
     totalEngagement = 0,
@@ -178,11 +187,13 @@ const DashboardScreen = ({ existingBusiness, user, notify }: DashboardScreenProp
     totalPosts = 0,
   } = stats;
 
+  // ✅ if engagement 0 fallback to posts
   const displayEngagement = totalEngagement > 0 ? totalEngagement : totalPosts;
 
-  const impressions = analytics?.impressions ?? 0;
-  const clicks = analytics?.clicks ?? 0;
-  const ctr = analytics?.ctr ?? 0;
+  // ✅ from analytics endpoint
+  const impressions = analytics.impressions;
+  const clicks = analytics.clicks;
+  const ctr = analytics.ctr;
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
@@ -277,21 +288,21 @@ const DashboardScreen = ({ existingBusiness, user, notify }: DashboardScreenProp
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <StatCard
           title="Impressions"
-          value={impressions}
+          value={analyticsLoading ? "…" : impressions}
           icon={<BarChart3 size={24} />}
           gradient="purple"
           delay={0}
         />
         <StatCard
           title="Website Clicks"
-          value={clicks}
+          value={analyticsLoading ? "…" : clicks}
           icon={<BarChart3 size={24} />}
           gradient="success"
           delay={0.1}
         />
         <StatCard
           title="CTR"
-          value={typeof ctr === "number" ? `${ctr.toFixed(2)}%` : `${ctr}%`}
+          value={analyticsLoading ? "…" : `${Number(ctr).toFixed(2)}%`}
           icon={<BarChart3 size={24} />}
           gradient="warning"
           delay={0.2}

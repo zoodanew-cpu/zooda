@@ -816,10 +816,13 @@ app.get("/api/dashboard/:businessId", async (req, res) => {
   try {
     const { businessId } = req.params;
 
-    // ✅ days filter (default 7)
-    const days = Math.max(1, Math.min(parseInt(req.query.days || "7", 10), 365));
+    // ✅ days filter (default 7, clamp 1..365)
+    const daysRaw = parseInt(req.query.days || "7", 10);
+    const days = Number.isFinite(daysRaw) ? Math.max(1, Math.min(daysRaw, 365)) : 7;
+
+    const toDate = new Date();
     const fromDate = new Date();
-    fromDate.setDate(fromDate.getDate() - days);
+    fromDate.setDate(toDate.getDate() - days);
 
     const businessObjectId = new mongoose.Types.ObjectId(businessId);
 
@@ -838,46 +841,32 @@ app.get("/api/dashboard/:businessId", async (req, res) => {
     // ✅ match filter for time range
     const postMatch = {
       business: businessObjectId,
-      createdAt: { $gte: fromDate },
+      createdAt: { $gte: fromDate, $lte: toDate },
     };
 
     const productMatch = {
       business: businessObjectId,
-      createdAt: { $gte: fromDate },
+      createdAt: { $gte: fromDate, $lte: toDate },
     };
 
     const promoMatch = {
       business: businessObjectId,
-      createdAt: { $gte: fromDate },
+      createdAt: { $gte: fromDate, $lte: toDate },
       isActive: true,
     };
 
     const analyticsMatch = {
       business: businessObjectId,
-      createdAt: { $gte: fromDate },
+      createdAt: { $gte: fromDate, $lte: toDate },
     };
 
-    // ✅ 2) Run everything in parallel
     const [
-      // A) Posts stats: totalPosts + engagement
       postMetricsResult,
-
-      // B) Products stats: totalProducts + revenue
       productStatsResult,
-
-      // C) Promotions count
       totalPromotions,
-
-      // D) Recent posts
       recentPosts,
-
-      // E) Recent products
       recentProducts,
-
-      // F) Platform performance
       platformStats,
-
-      // G) Analytics (impressions/clicks)
       analyticsResult,
     ] = await Promise.all([
       // A) POST METRICS
@@ -901,22 +890,24 @@ app.get("/api/dashboard/:businessId", async (req, res) => {
         { $project: { _id: 0, totalPosts: 1, totalEngagement: 1 } },
       ]),
 
-      // B) PRODUCT STATS (count + revenue)
+      // B) PRODUCT STATS
       Product.aggregate([
         { $match: productMatch },
         {
           $group: {
             _id: null,
             totalProducts: { $sum: 1 },
-
-            // ✅ revenue: if your schema has sales.revenue use it,
-            // else fallback to (sales * price)
             totalRevenue: {
               $sum: {
                 $cond: [
                   { $ifNull: ["$sales.revenue", false] },
                   "$sales.revenue",
-                  { $multiply: [{ $ifNull: ["$sales", 0] }, { $ifNull: ["$price", 0] }] },
+                  {
+                    $multiply: [
+                      { $ifNull: ["$sales", 0] },
+                      { $ifNull: ["$price", 0] },
+                    ],
+                  },
                 ],
               },
             },
@@ -925,22 +916,22 @@ app.get("/api/dashboard/:businessId", async (req, res) => {
         { $project: { _id: 0, totalProducts: 1, totalRevenue: 1 } },
       ]),
 
-      // C) ACTIVE PROMOTIONS (in date range)
+      // C) ACTIVE PROMOTIONS
       Promotion.countDocuments(promoMatch),
 
-      // D) RECENT POSTS
+      // D) RECENT POSTS (within range)
       Post.find(postMatch)
         .sort({ createdAt: -1 })
         .limit(5)
         .select("content createdAt likesList commentsList shares"),
 
-      // E) RECENT PRODUCTS
+      // E) RECENT PRODUCTS (within range)
       Product.find(productMatch)
         .sort({ createdAt: -1 })
         .limit(5)
         .select("name createdAt sales price"),
 
-      // F) PLATFORM PERFORMANCE
+      // F) PLATFORM PERFORMANCE (within range)
       Post.aggregate([
         { $match: postMatch },
         { $unwind: { path: "$platforms", preserveNullAndEmptyArrays: true } },
@@ -962,7 +953,7 @@ app.get("/api/dashboard/:businessId", async (req, res) => {
         { $sort: { count: -1 } },
       ]),
 
-      // G) ANALYTICS
+      // G) ANALYTICS (within range)
       Analytics.aggregate([
         { $match: analyticsMatch },
         {
@@ -974,7 +965,6 @@ app.get("/api/dashboard/:businessId", async (req, res) => {
             clicks: {
               $sum: { $cond: [{ $eq: ["$type", "click"] }, 1, 0] },
             },
-            // if you are tracking external visits as "visit"
             visits: {
               $sum: { $cond: [{ $eq: ["$type", "visit"] }, 1, 0] },
             },
@@ -988,16 +978,13 @@ app.get("/api/dashboard/:businessId", async (req, res) => {
     const productStats = productStatsResult?.[0] || { totalProducts: 0, totalRevenue: 0 };
     const analytics = analyticsResult?.[0] || { impressions: 0, clicks: 0, visits: 0 };
 
-    // Followers (lifetime)
     const followersCount = Array.isArray(business.followers) ? business.followers.length : 0;
 
-    // ✅ CTR (click-through rate)
     const ctr =
       analytics.impressions > 0
         ? Number(((analytics.clicks / analytics.impressions) * 100).toFixed(2))
         : 0;
 
-    // ✅ Recent Activity (posts + products)
     const formattedPostActivity = recentPosts.map((post) => ({
       type: "post",
       description: `New post: "${(post.content || "").substring(0, 30)}${
@@ -1018,13 +1005,12 @@ app.get("/api/dashboard/:businessId", async (req, res) => {
       (a, b) => new Date(b.time) - new Date(a.time)
     );
 
-    // ✅ Respond
-    res.json({
+    return res.json({
       success: true,
       range: {
         days,
         from: fromDate,
-        to: new Date(),
+        to: toDate,
       },
       dashboard: {
         stats: {
@@ -1050,7 +1036,7 @@ app.get("/api/dashboard/:businessId", async (req, res) => {
     });
   } catch (error) {
     console.error("Get dashboard by business ID error:", error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: "Server error while fetching dashboard data",
     });
@@ -4024,33 +4010,57 @@ app.post('/reset-password-direct', async (req, res) => {
     res.status(500).json({ success: false, message: 'Reset failed' });
   }
 });
-const companyAnalyticsSchema = new mongoose.Schema({
-  companyId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "Company",
-    required: true,
-  },
-  userId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "User",
-    default: null, // guest users allowed
-  },
-  type: {
-    type: String,
-    enum: ["impression", "click"],
-    required: true,
-  },
-  createdAt: {
-    type: Date,
-    default: Date.now,
-  },
-});
 
-// Prevent model overwrite error in dev
+const companyAnalyticsSchema = new mongoose.Schema(
+  {
+    companyId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Company",
+      required: true,
+      index: true,
+    },
+
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null, // guest users allowed
+    },
+
+    type: {
+      type: String,
+      enum: ["impression", "click"],
+      required: true,
+      index: true,
+    },
+
+    createdAt: {
+      type: Date,
+      default: Date.now,
+      index: true,
+    },
+  },
+  {
+    timestamps: false,
+  }
+);
+
+/**
+ * ✅ Compound index for dashboard filtering:
+ * companyId + createdAt
+ */
+companyAnalyticsSchema.index({ companyId: 1, createdAt: -1 });
+
+/**
+ * ✅ Optional: helps grouping by type in range queries
+ */
+companyAnalyticsSchema.index({ companyId: 1, type: 1, createdAt: -1 });
+
+/**
+ * Prevent model overwrite error in dev
+ */
 const CompanyAnalytics =
   mongoose.models.CompanyAnalytics ||
   mongoose.model("CompanyAnalytics", companyAnalyticsSchema);
-
 /* ===============================
    SAVE IMPRESSION
 ================================ */
@@ -4123,10 +4133,21 @@ app.get("/api/analytics/company/:companyId", async (req, res) => {
   try {
     const { companyId } = req.params;
 
+    // ✅ days filter (default 7, clamp 1..365)
+    const daysRaw = parseInt(req.query.days || "7", 10);
+    const days = Number.isFinite(daysRaw) ? Math.max(1, Math.min(daysRaw, 365)) : 7;
+
+    const toDate = new Date();
+    const fromDate = new Date();
+    fromDate.setDate(toDate.getDate() - days);
+
+    const companyObjectId = new mongoose.Types.ObjectId(companyId);
+
     const stats = await CompanyAnalytics.aggregate([
       {
         $match: {
-          companyId: new mongoose.Types.ObjectId(companyId),
+          companyId: companyObjectId,
+          createdAt: { $gte: fromDate, $lte: toDate }, // ✅ FILTER HERE
         },
       },
       {
@@ -4145,20 +4166,25 @@ app.get("/api/analytics/company/:companyId", async (req, res) => {
       if (item._id === "click") clicks = item.count;
     });
 
-    const ctr =
-      impressions > 0 ? ((clicks / impressions) * 100).toFixed(2) : 0;
+    const ctr = impressions > 0 ? Number(((clicks / impressions) * 100).toFixed(2)) : 0;
 
-    res.json({
+    return res.json({
       success: true,
+      range: {
+        days,
+        from: fromDate,
+        to: toDate,
+      },
       impressions,
       clicks,
       ctr,
     });
   } catch (err) {
     console.error("Analytics fetch error:", err);
-    res.status(500).json({ success: false });
+    return res.status(500).json({ success: false, message: "Server error fetching analytics" });
   }
 });
+
 app.get("/api/dashboard/company/:companyId", async (req, res) => {
   try {
     const { companyId } = req.params;
