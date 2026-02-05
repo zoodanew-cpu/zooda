@@ -881,7 +881,14 @@ app.get("/api/dashboard/:businessId", async (req, res) => {
                 $add: [
                   { $size: { $ifNull: ["$likesList", []] } },
                   { $size: { $ifNull: ["$commentsList", []] } },
-                  { $ifNull: ["$shares", 0] },
+                  {
+                    $convert: {
+                      input: { $ifNull: ["$shares", 0] },
+                      to: "double",
+                      onError: 0,
+                      onNull: 0,
+                    },
+                  },
                 ],
               },
             },
@@ -890,7 +897,7 @@ app.get("/api/dashboard/:businessId", async (req, res) => {
         { $project: { _id: 0, totalPosts: 1, totalEngagement: 1 } },
       ]),
 
-      // B) PRODUCT STATS
+      // B) PRODUCT STATS ✅ FIXED (no non-numeric multiply)
       Product.aggregate([
         { $match: productMatch },
         {
@@ -900,12 +907,37 @@ app.get("/api/dashboard/:businessId", async (req, res) => {
             totalRevenue: {
               $sum: {
                 $cond: [
-                  { $ifNull: ["$sales.revenue", false] },
-                  "$sales.revenue",
+                  // ✅ revenue exists (including 0)
+                  { $ne: ["$sales.revenue", null] },
+                  {
+                    $convert: {
+                      input: "$sales.revenue",
+                      to: "double",
+                      onError: 0,
+                      onNull: 0,
+                    },
+                  },
+                  // ✅ fallback: (salesCount * price)
                   {
                     $multiply: [
-                      { $ifNull: ["$sales", 0] },
-                      { $ifNull: ["$price", 0] },
+                      {
+                        // If sales is a number count → works
+                        // If sales is an object → becomes 0 (onError)
+                        $convert: {
+                          input: "$sales",
+                          to: "double",
+                          onError: 0,
+                          onNull: 0,
+                        },
+                      },
+                      {
+                        $convert: {
+                          input: "$price",
+                          to: "double",
+                          onError: 0,
+                          onNull: 0,
+                        },
+                      },
                     ],
                   },
                 ],
@@ -944,7 +976,14 @@ app.get("/api/dashboard/:businessId", async (req, res) => {
                 $add: [
                   { $size: { $ifNull: ["$likesList", []] } },
                   { $size: { $ifNull: ["$commentsList", []] } },
-                  { $ifNull: ["$shares", 0] },
+                  {
+                    $convert: {
+                      input: { $ifNull: ["$shares", 0] },
+                      to: "double",
+                      onError: 0,
+                      onNull: 0,
+                    },
+                  },
                 ],
               },
             },
@@ -997,7 +1036,7 @@ app.get("/api/dashboard/:businessId", async (req, res) => {
     const formattedProductActivity = recentProducts.map((product) => ({
       type: "product",
       description: `New product added: ${product.name}`,
-      engagement: `${product.sales || 0} sales`,
+      engagement: `${(typeof product.sales === "number" ? product.sales : product.sales?.count) || 0} sales`,
       time: product.createdAt,
     }));
 
@@ -1019,7 +1058,7 @@ app.get("/api/dashboard/:businessId", async (req, res) => {
           totalProducts: productStats.totalProducts,
           totalPromotions,
           followers: followersCount,
-          totalRevenue: Math.round((productStats.totalRevenue || 0) * 100) / 100,
+          totalRevenue: Math.round((Number(productStats.totalRevenue || 0)) * 100) / 100,
           impressions: analytics.impressions || 0,
           clicks: analytics.clicks || 0,
           visits: analytics.visits || 0,
@@ -1042,6 +1081,7 @@ app.get("/api/dashboard/:businessId", async (req, res) => {
     });
   }
 });
+
 
 
 app.put('/api/profile', async (req, res) => {

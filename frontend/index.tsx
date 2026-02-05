@@ -317,6 +317,17 @@ interface SearchResult {
   price?: string;
 }
 
+interface SearchResult {
+  id: string;
+  name: string;
+  type: "company" | "product";
+  companyId?: string;
+  companyName?: string;
+  imageUrl?: string;
+  price?: string;
+}
+
+
 const SearchPage = ({
   onSelectSearchResult,
   onSearchChange,
@@ -331,9 +342,24 @@ const SearchPage = ({
   const [loading, setLoading] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<any | null>(null);
 
+  // ✅ show only 3 by default, per business
+  const [expandedBusinesses, setExpandedBusinesses] = useState<Record<string, boolean>>({});
+
   useEffect(() => {
     fetchBusinesses();
   }, []);
+
+  // ✅ collapse "show more" when search changes (better UX)
+  useEffect(() => {
+    setExpandedBusinesses({});
+  }, [searchQuery]);
+
+  const toggleBusinessProducts = (businessId: string) => {
+    setExpandedBusinesses((prev) => ({
+      ...prev,
+      [businessId]: !prev[businessId],
+    }));
+  };
 
   const fetchBusinesses = async () => {
     // Mock data for demo
@@ -345,9 +371,42 @@ const SearchPage = ({
           businessDescription: "Fresh and organic groceries.",
           businessCategory: "Groceries",
           logoUrl: "https://placehold.co/80x80/004d40/ffffff?text=ORG",
+          followers: 1280,
+          engagementRate: "4.2%",
+          businessWebsite: "https://example.com",
           products: [
-            { _id: "p1", name: "Organic Apples", price: 150, category: "Fruit", tags: ["fresh", "fruit"], image: { url: "https://placehold.co/300x200/ff4d4d/ffffff?text=Apple" } },
-            { _id: "p2", name: "Whole Wheat Bread", price: 80, category: "Bakery", tags: ["bread", "whole grain"], image: { url: "https://placehold.co/300x200/ff9900/ffffff?text=Bread" } },
+            {
+              _id: "p1",
+              name: "Organic Apples",
+              price: 150,
+              category: "Fruit",
+              tags: ["fresh", "fruit"],
+              image: { url: "https://placehold.co/300x200/ff4d4d/ffffff?text=Apple" },
+            },
+            {
+              _id: "p2",
+              name: "Whole Wheat Bread",
+              price: 80,
+              category: "Bakery",
+              tags: ["bread", "whole grain"],
+              image: { url: "https://placehold.co/300x200/ff9900/ffffff?text=Bread" },
+            },
+            {
+              _id: "p3",
+              name: "Organic Milk",
+              price: 60,
+              category: "Dairy",
+              tags: ["milk", "fresh"],
+              image: { url: "https://placehold.co/300x200/00ccff/ffffff?text=Milk" },
+            },
+            {
+              _id: "p6",
+              name: "Fresh Bananas",
+              price: 45,
+              category: "Fruit",
+              tags: ["fruit", "fresh"],
+              image: { url: "https://placehold.co/300x200/ffd000/000000?text=Banana" },
+            },
           ],
         },
         {
@@ -356,9 +415,42 @@ const SearchPage = ({
           businessDescription: "Latest gadgets and accessories.",
           businessCategory: "Electronics",
           logoUrl: "https://placehold.co/80x80/333333/00ccff?text=TECH",
+          followers: 9800,
+          engagementRate: "3.1%",
+          businessWebsite: "https://example.com",
           products: [
-            { _id: "p4", name: "Wireless Mouse", price: 599, category: "Accessory", tags: ["computer", "office"], image: { url: "https://placehold.co/300x200/007bff/ffffff?text=Mouse" } },
-            { _id: "p5", name: "4K Monitor - UltraSharp", price: 25000, category: "Display", tags: ["gaming", "work"], image: { url: "https://placehold.co/300x200/9933ff/ffffff?text=Monitor" } },
+            {
+              _id: "p4",
+              name: "Wireless Mouse",
+              price: 599,
+              category: "Accessory",
+              tags: ["computer", "office"],
+              image: { url: "https://placehold.co/300x200/007bff/ffffff?text=Mouse" },
+            },
+            {
+              _id: "p5",
+              name: "4K Monitor - UltraSharp",
+              price: 25000,
+              category: "Display",
+              tags: ["gaming", "work"],
+              image: { url: "https://placehold.co/300x200/9933ff/ffffff?text=Monitor" },
+            },
+            {
+              _id: "p7",
+              name: "Bluetooth Keyboard",
+              price: 1299,
+              category: "Accessory",
+              tags: ["keyboard", "office"],
+              image: { url: "https://placehold.co/300x200/00aa66/ffffff?text=Keyboard" },
+            },
+            {
+              _id: "p8",
+              name: "Noise Cancelling Headphones",
+              price: 4999,
+              category: "Audio",
+              tags: ["music", "travel"],
+              image: { url: "https://placehold.co/300x200/111111/ffffff?text=Headphones" },
+            },
           ],
         },
       ];
@@ -433,73 +525,105 @@ const SearchPage = ({
         ) : filtered.length === 0 ? (
           <div className="sp-search-no-results">No businesses or products found.</div>
         ) : (
-          filtered.map((business) => (
-            <div key={business._id} className="sp-business-block">
-              <div className="sp-business-card">
-                <img
-                  src={business.logoUrl || "https://placehold.co/80x80?text=Logo"}
-                  alt={business.businessName}
-                  className="sp-business-logo"
-                />
-                <div className="sp-business-info">
-                  <h3>{business.businessName}</h3>
-                  <div className="sp-company-stats">
-                    <span>followers: {business.followers}</span>
-                    <span>ER: {business.engagementRate}</span>
-                    <a href={business.businessWebsite || '#'} target="_blank" rel="noopener noreferrer">
-                      <button className="sp-visit-btn">Visit site</button>
-                    </a>
-                  </div>
-                  <p>{business.businessDescription}</p>
-                </div>
-              </div>
+          filtered.map((business) => {
+            const lowerQuery = searchQuery.toLowerCase();
 
-              {/* Products */}
-              {business.products?.length > 0 ? (
-                <div className="sp-products-grid">
-                  {business.products
-                    .filter((product: any) => {
-                      if (!searchQuery) return true;
-                      const lowerQuery = searchQuery.toLowerCase();
-                      return (
-                        product.name?.toLowerCase().includes(lowerQuery) ||
-                        product.category?.toLowerCase().includes(lowerQuery) ||
-                        product.tags?.some((tag: string) =>
-                          tag.toLowerCase().includes(lowerQuery)
-                        )
-                      );
-                    })
-                    .map((product: any) => (
-                      <div
-                        key={product._id}
-                        className="sp-product-card"
-                        onClick={() => setSelectedProduct(product)}
+            const matchedProducts = (business.products || []).filter((product: any) => {
+              if (!searchQuery) return true;
+              return (
+                product.name?.toLowerCase().includes(lowerQuery) ||
+                product.category?.toLowerCase().includes(lowerQuery) ||
+                product.tags?.some((tag: string) => tag.toLowerCase().includes(lowerQuery))
+              );
+            });
+
+            const isExpanded = !!expandedBusinesses[business._id];
+            const visibleProducts = isExpanded ? matchedProducts : matchedProducts.slice(0, 3);
+            const shouldShowToggle = matchedProducts.length > 3;
+
+            return (
+              <div key={business._id} className="sp-business-block">
+                <div className="sp-business-card">
+                  <img
+                    src={business.logoUrl || "https://placehold.co/80x80?text=Logo"}
+                    alt={business.businessName}
+                    className="sp-business-logo"
+                  />
+                  <div className="sp-business-info">
+                    <h3>{business.businessName}</h3>
+                    <div className="sp-company-stats">
+                      <span>followers: {business.followers ?? 0}</span>
+                      <span>ER: {business.engagementRate ?? "N/A"}</span>
+                      <a
+                        href={business.businessWebsite || "#"}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => {
+                          if (!business.businessWebsite) e.preventDefault();
+                        }}
                       >
-                        <div className="sp-product-details-text">
-                          <p>
-                            Product: <span className="sp-product-name">{product.name}</span>
-                          </p>
-                          <p>
-                            Price: <span className="sp-product-price-text">₹{product.price || "N/A"}</span>
-                          </p>
-                        </div>
-                        <button
-                          className="sp-view-btn"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedProduct(product);
-                          }}
-                        >
-                          <span className="material-icons">visibility</span>
-                        </button>
-                      </div>
-                    ))}
+                        <button className="sp-visit-btn">Visit site</button>
+                      </a>
+                    </div>
+                    <p>{business.businessDescription}</p>
+                  </div>
                 </div>
-              ) : (
-                <div className="sp-no-products">No products listed for this business.</div>
-              )}
-            </div>
-          ))
+
+                {/* Products */}
+                {business.products?.length > 0 ? (
+                  matchedProducts.length === 0 ? (
+                    <div className="sp-no-products">No products match your search.</div>
+                  ) : (
+                    <>
+                      <div className="sp-products-grid">
+                        {visibleProducts.map((product: any) => (
+                          <div
+                            key={product._id}
+                            className="sp-product-card"
+                            onClick={() => setSelectedProduct(product)}
+                          >
+                            <div className="sp-product-details-text">
+                              <p>
+                                Product:{" "}
+                                <span className="sp-product-name">{product.name}</span>
+                              </p>
+                              <p>
+                                Price:{" "}
+                                <span className="sp-product-price-text">
+                                  ₹{product.price || "N/A"}
+                                </span>
+                              </p>
+                            </div>
+
+                            <button
+                              className="sp-view-btn"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedProduct(product);
+                              }}
+                            >
+                              <span className="material-icons">visibility</span>
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+
+                      {shouldShowToggle && (
+                        <button
+                          className="sp-show-more-btn"
+                          onClick={() => toggleBusinessProducts(business._id)}
+                        >
+                          {isExpanded ? "Show less" : `Show more (${matchedProducts.length - 3})`}
+                        </button>
+                      )}
+                    </>
+                  )
+                ) : (
+                  <div className="sp-no-products">No products listed for this business.</div>
+                )}
+              </div>
+            );
+          })
         )}
       </main>
 
@@ -514,10 +638,18 @@ const SearchPage = ({
             <div className="sp-popup-details">
               <h3>{selectedProduct.name}</h3>
               <span className="sp-popup-price">₹{selectedProduct.price || "N/A"}</span>
-              <a href={selectedProduct.productLink || '#'} target="_blank" rel="noopener noreferrer">
+              <a
+                href={selectedProduct.productLink || "#"}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => {
+                  if (!selectedProduct.productLink) e.preventDefault();
+                }}
+              >
                 <button
                   className="sp-select-product-btn"
-                  onClick={() => {
+                  onClick={(e) => {
+                    e.preventDefault(); // keep SPA behavior
                     onSelectSearchResult(selectedProduct);
                     setSelectedProduct(null);
                   }}
@@ -526,10 +658,7 @@ const SearchPage = ({
                 </button>
               </a>
             </div>
-            <button
-              className="sp-close-popup"
-              onClick={() => setSelectedProduct(null)}
-            >
+            <button className="sp-close-popup" onClick={() => setSelectedProduct(null)}>
               ✕
             </button>
           </div>
@@ -537,50 +666,269 @@ const SearchPage = ({
       )}
 
       <style jsx>{`
-        .sp-search-page { background: #000; color: #fff; min-height: 100vh; }
-        .sp-app-header { display: flex; align-items: center; padding: 0.8rem 1rem; border-bottom: 1px solid #222; background: #000; position: sticky; top: 0; z-index: 10; }
-        .sp-back-button { background: none; border: none; color: #fff; cursor: pointer; }
-        .sp-search-input-wrapper { display: flex; align-items: center; background: #111; border-radius: 8px; padding: 0.4rem 0.8rem; flex: 1; margin-left: 0.8rem; }
-        .sp-search-page-input { flex: 1; background: transparent; border: none; color: #fff; outline: none; font-size: 1rem; }
-        .sp-search-icon { color: #aaa; margin-right: 0.4rem; }
-        .sp-search-clear { background: none; border: none; color: #aaa; cursor: pointer; }
-
-        .sp-business-block { background: #111; border-radius: 12px; margin: 1rem; padding: 1rem; box-shadow: 0 0 6px rgba(255, 255, 255, 0.05); }
-        .sp-business-card { display: flex; align-items: center; border-bottom: 1px solid #222; padding-bottom: 1rem; margin-bottom: 1rem; }
-        .sp-business-logo { width: 60px; height: 60px; border-radius: 8px; object-fit: cover; margin-right: 1rem; }
-        .sp-business-info h3 { margin: 0; color: #fff; font-size: 1.1rem; }
-        .sp-business-info p { margin: 2px 0; color: #bbb; font-size: 0.85rem; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
-        .sp-company-stats{
-            font-size: 0.75rem;
-    gap: 20px;
-            display: flex;
-        justify-content: space-between;
-        align-items: center;
+        .sp-search-page {
+          background: #000;
+          color: #fff;
+          min-height: 100vh;
         }
-        .sp-company-stats span { font-size: 0.75rem; color: #888; }
-        .sp-products-grid { display: flex; flex-direction: column; gap: 0.6rem; }
-        .sp-product-card { background: #1a1a1a; border-radius: 10px; padding: 0.8rem 1rem; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 0 4px rgba(255, 255, 255, 0.05); cursor: pointer; transition: background 0.2s, transform 0.1s; }
-        .sp-product-card:hover { background: #222; transform: translateY(-1px); }
-        .sp-product-details-text { flex: 1; display: flex; flex-direction: column; text-align: left; min-width: 0; }
-        .sp-product-details-text p { margin: 0; line-height: 1.4; color: #ccc; font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .sp-product-name { font-weight: 600; color: #fff; }
-        .sp-product-price-text { color: #00ff99; font-weight: 600; }
-        .sp-view-btn { background: #4CAF50; color: #fff; border: none; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-size: 0.85rem; margin-left: 15px; flex-shrink: 0; }
-        .sp-visit-btn { background: #4CAF50; color: #fff; border: none; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-size: 0.85rem }
-        .sp-no-products, .sp-search-loading, .sp-search-no-results { padding: 1rem; color: #aaa; text-align: center; font-style: italic; }
+        .sp-app-header {
+          display: flex;
+          align-items: center;
+          padding: 0.8rem 1rem;
+          border-bottom: 1px solid #222;
+          background: #000;
+          position: sticky;
+          top: 0;
+          z-index: 10;
+        }
+        .sp-back-button {
+          background: none;
+          border: none;
+          color: #fff;
+          cursor: pointer;
+        }
+        .sp-search-input-wrapper {
+          display: flex;
+          align-items: center;
+          background: #111;
+          border-radius: 8px;
+          padding: 0.4rem 0.8rem;
+          flex: 1;
+          margin-left: 0.8rem;
+        }
+        .sp-search-page-input {
+          flex: 1;
+          background: transparent;
+          border: none;
+          color: #fff;
+          outline: none;
+          font-size: 1rem;
+        }
+        .sp-search-icon {
+          color: #aaa;
+          margin-right: 0.4rem;
+        }
+        .sp-search-clear {
+          background: none;
+          border: none;
+          color: #aaa;
+          cursor: pointer;
+        }
 
-        .sp-image-popup-overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.8); display: flex; align-items: center; justify-content: center; z-index: 100; }
-        .sp-image-popup { background: #111; padding: 1.5rem; border-radius: 12px; position: relative; width: 90%; max-width: 380px; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5); text-align: center; }
-        .sp-image-popup img { width: 100%; max-height: 250px; object-fit: cover; border-radius: 8px; margin-bottom: 1rem; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3); }
-        .sp-popup-details h3 { margin: 0 0 0.5rem 0; color: #fff; font-size: 1.4rem; }
-        .sp-popup-price { color: #00ff99; margin-top: 4px; font-weight: 700; font-size: 1.2rem; display: block; margin-bottom: 1rem; }
-        .sp-select-product-btn { background: #00ff99; color: #000; border: none; padding: 10px 20px; border-radius: 8px; font-size: 1rem; font-weight: bold; cursor: pointer; width: 100%; transition: background 0.2s; }
-        .sp-select-product-btn:hover { background: #00e685; }
-        .sp-close-popup { position: absolute; top: 10px; right: 10px; background: rgba(255, 255, 255, 0.1); border: none; border-radius: 50%; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 1rem; cursor: pointer; }
+        .sp-business-block {
+          background: #111;
+          border-radius: 12px;
+          margin: 1rem;
+          padding: 1rem;
+          box-shadow: 0 0 6px rgba(255, 255, 255, 0.05);
+        }
+        .sp-business-card {
+          display: flex;
+          align-items: center;
+          border-bottom: 1px solid #222;
+          padding-bottom: 1rem;
+          margin-bottom: 1rem;
+        }
+        .sp-business-logo {
+          width: 60px;
+          height: 60px;
+          border-radius: 8px;
+          object-fit: cover;
+          margin-right: 1rem;
+        }
+        .sp-business-info h3 {
+          margin: 0;
+          color: #fff;
+          font-size: 1.1rem;
+        }
+        .sp-business-info p {
+          margin: 2px 0;
+          color: #bbb;
+          font-size: 0.85rem;
+          display: -webkit-box;
+          -webkit-line-clamp: 1;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
+        }
+        .sp-company-stats {
+          font-size: 0.75rem;
+          gap: 20px;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+        }
+        .sp-company-stats span {
+          font-size: 0.75rem;
+          color: #888;
+        }
+
+        .sp-products-grid {
+          display: flex;
+          flex-direction: column;
+          gap: 0.6rem;
+        }
+        .sp-product-card {
+          background: #1a1a1a;
+          border-radius: 10px;
+          padding: 0.8rem 1rem;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          box-shadow: 0 0 4px rgba(255, 255, 255, 0.05);
+          cursor: pointer;
+          transition: background 0.2s, transform 0.1s;
+        }
+        .sp-product-card:hover {
+          background: #222;
+          transform: translateY(-1px);
+        }
+        .sp-product-details-text {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          text-align: left;
+          min-width: 0;
+        }
+        .sp-product-details-text p {
+          margin: 0;
+          line-height: 1.4;
+          color: #ccc;
+          font-size: 0.9rem;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .sp-product-name {
+          font-weight: 600;
+          color: #fff;
+        }
+        .sp-product-price-text {
+          color: #00ff99;
+          font-weight: 600;
+        }
+        .sp-view-btn {
+          background: #4caf50;
+          color: #fff;
+          border: none;
+          padding: 8px 14px;
+          border-radius: 6px;
+          cursor: pointer;
+          font-size: 0.85rem;
+          margin-left: 15px;
+          flex-shrink: 0;
+        }
+        .sp-visit-btn {
+          background: #4caf50;
+          color: #fff;
+          border: none;
+          padding: 8px 14px;
+          border-radius: 6px;
+          cursor: pointer;
+          font-size: 0.85rem;
+        }
+        .sp-no-products,
+        .sp-search-loading,
+        .sp-search-no-results {
+          padding: 1rem;
+          color: #aaa;
+          text-align: center;
+          font-style: italic;
+        }
+
+        /* ✅ Show more button */
+        .sp-show-more-btn {
+          width: 100%;
+          margin-top: 10px;
+          background: #222;
+          border: 1px solid #333;
+          color: #fff;
+          padding: 10px 14px;
+          border-radius: 10px;
+          cursor: pointer;
+          font-size: 0.9rem;
+          transition: background 0.2s, transform 0.1s;
+        }
+        .sp-show-more-btn:hover {
+          background: #2a2a2a;
+          transform: translateY(-1px);
+        }
+
+        .sp-image-popup-overlay {
+          position: fixed;
+          inset: 0;
+          background: rgba(0, 0, 0, 0.8);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 100;
+        }
+        .sp-image-popup {
+          background: #111;
+          padding: 1.5rem;
+          border-radius: 12px;
+          position: relative;
+          width: 90%;
+          max-width: 380px;
+          box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+          text-align: center;
+        }
+        .sp-image-popup img {
+          width: 100%;
+          max-height: 250px;
+          object-fit: cover;
+          border-radius: 8px;
+          margin-bottom: 1rem;
+          box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+        }
+        .sp-popup-details h3 {
+          margin: 0 0 0.5rem 0;
+          color: #fff;
+          font-size: 1.4rem;
+        }
+        .sp-popup-price {
+          color: #00ff99;
+          margin-top: 4px;
+          font-weight: 700;
+          font-size: 1.2rem;
+          display: block;
+          margin-bottom: 1rem;
+        }
+        .sp-select-product-btn {
+          background: #00ff99;
+          color: #000;
+          border: none;
+          padding: 10px 20px;
+          border-radius: 8px;
+          font-size: 1rem;
+          font-weight: bold;
+          cursor: pointer;
+          width: 100%;
+          transition: background 0.2s;
+        }
+        .sp-select-product-btn:hover {
+          background: #00e685;
+        }
+        .sp-close-popup {
+          position: absolute;
+          top: 10px;
+          right: 10px;
+          background: rgba(255, 255, 255, 0.1);
+          border: none;
+          border-radius: 50%;
+          width: 30px;
+          height: 30px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: #fff;
+          font-size: 1rem;
+          cursor: pointer;
+        }
       `}</style>
     </div>
   );
 };
+
 
 // ---------------- HEADER COMPONENT ----------------
 interface HeaderProps {
