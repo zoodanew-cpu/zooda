@@ -1,9 +1,13 @@
+require("dotenv").config();
 const express = require('express');
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const cors = require('cors');
 const multer = require('multer');
+const botRoutes = require("./Routes/bot");
+const chatRoutes = require("./Routes/Chat");
+
 const path = require('path');
 const fs = require('fs');
 const { v2: cloudinary } = require("cloudinary");
@@ -1081,9 +1085,6 @@ app.get("/api/dashboard/:businessId", async (req, res) => {
     });
   }
 });
-
-
-
 app.put('/api/profile', async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
@@ -1242,8 +1243,6 @@ app.post("/api/business", authMiddleware, upload.single("media"), async (req, re
     });
   }
 });
-
-
 app.get('/api/business', async (req, res) => {
   try {
     // ✅ Get userId from query parameters (since it's a GET request)
@@ -4396,6 +4395,10 @@ app.get('/api/businesses/:businessId/promotions', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+
+app.use("/api", botRoutes);
+app.use("/api", chatRoutes);
+
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
