@@ -144,6 +144,28 @@ interface Promotion {
 }
 
 const API_BASE_URL = "https://api.zooda.in";
+import { Sparkles } from "lucide-react";
+
+type FloatingBotButtonProps = {
+  onClick: () => void;
+};
+
+const FloatingBotButton = () => {
+  return (
+    <a
+      href="https://ai.zooda.in"
+      className="ai-bot-float"
+      aria-label="Open AI Bot"
+      title="Open AI Bot"
+    >
+      <span className="ai-bot-glow"></span>
+      <div className="ai-bot-inner">
+        <Sparkles size={18} />
+        <span>AI Bot</span>
+      </div>
+    </a>
+  );
+};
 
 const getActivePromotions = async (): Promise<Promotion[]> => {
   try {
@@ -5555,14 +5577,15 @@ const RegisterModal = ({
     </div>
   );
 };
-
 const useHashRouter = () => {
   const normalizeHash = (hash: string) => {
     if (!hash) return "";
     return hash.replace(/^#\/?|^!#\/?|^#!/, "");
   };
 
-  const [currentHash, setCurrentHash] = useState<string>(normalizeHash(window.location.hash));
+  const [currentHash, setCurrentHash] = useState<string>(
+    normalizeHash(window.location.hash)
+  );
 
   useEffect(() => {
     const handleHashChange = () => {
@@ -5578,23 +5601,38 @@ const useHashRouter = () => {
     if (!hash.startsWith("#")) window.location.hash = `#${hash}`;
     else window.location.hash = hash;
   };
+const getRouteParams = () => {
+  const hash = currentHash;
 
-  const getRouteParams = () => {
-    const hash = currentHash;
+  if (hash.startsWith("company-")) {
+    return { type: "company", id: hash.replace("company-", "") };
+  }
 
-    if (hash.startsWith("company-")) return { type: "company", id: hash.replace("company-", "") };
-    if (hash.startsWith("post-")) return { type: "post", id: hash.replace("post-", "") };
+  if (hash.startsWith("post-")) {
+    return { type: "post", id: hash.replace("post-", "") };
+  }
 
-    switch (hash) {
-      case "profile": return { type: "profile" };
-      case "posts": return { type: "posts" };
-      case "about": return { type: "about" };
-      case "privacy": return { type: "privacy" };
-      case "terms": return { type: "terms" };
-      case "search": return { type: "search" };
-      default: return { type: "home" };
-    }
-  };
+  switch (hash) {
+    case "profile":
+      return { type: "profile" };
+    case "posts":
+      return { type: "posts" };
+    case "about":
+      return { type: "about" };
+    case "privacy":
+      return { type: "privacy" };
+    case "terms":
+      return { type: "terms" };
+    case "search":
+      return { type: "search" };
+    case "bot":
+      return { type: "bot" };
+    case "chat":
+      return { type: "chat" };
+    default:
+      return { type: "home" };
+  }
+};
 
   return {
     currentHash,
@@ -5616,18 +5654,20 @@ const App = () => {
   const [allPromotions, setAllPromotions] = useState<Promotion[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchLoading, setSearchLoading] = useState(false);
-  
-  // Add selectedPost state to store both post and company data
-  const [selectedPost, setSelectedPost] = useState<{ post: Post; company: Company } | null>(null);
 
-  // Route state derived from hash
-  const isSearchActive = routeParams.type === 'search';
-  const selectedCompanyId = routeParams.type === 'company' ? routeParams.id : null;
-  const selectedPostId = routeParams.type === 'post' ? routeParams.id : null;
-  
-  const selectedCompany = allCompanies.find(c => c._id === selectedCompanyId) || null;
+  const [selectedPost, setSelectedPost] = useState<{
+    post: Post;
+    company: Company;
+  } | null>(null);
 
-  // Load user from localStorage
+  const isSearchActive = routeParams.type === "search";
+  const selectedCompanyId =
+    routeParams.type === "company" ? routeParams.id : null;
+  const selectedPostId = routeParams.type === "post" ? routeParams.id : null;
+
+  const selectedCompany =
+    allCompanies.find((c) => c._id === selectedCompanyId) || null;
+
   useEffect(() => {
     const savedUser = localStorage.getItem("user");
     if (savedUser) {
@@ -5636,7 +5676,6 @@ const App = () => {
     }
   }, []);
 
-  // Load all promotions using the updated API
   useEffect(() => {
     const loadAllPromotions = async () => {
       try {
@@ -5650,49 +5689,51 @@ const App = () => {
     loadAllPromotions();
   }, []);
 
-  // Reset selectedPost when navigating away from post
   useEffect(() => {
-    if (routeParams.type !== 'post') {
+    if (routeParams.type !== "post") {
       setSelectedPost(null);
     }
   }, [routeParams.type]);
 
-  // Load post data when post hash changes
   useEffect(() => {
     const loadPostData = async () => {
       if (selectedPostId && !selectedPost) {
         try {
           console.log("Loading post data for:", selectedPostId);
-          // Fetch post details
-          const postResponse = await axios.get(`${API_BASE_URL}/api/post/${selectedPostId}`);
+
+          const postResponse = await axios.get(
+            `${API_BASE_URL}/api/post/${selectedPostId}`
+          );
+
           if (postResponse.data.success) {
             const post = postResponse.data.post;
             console.log("Post data loaded:", post);
-            
-            // Fetch company details for the post
+
             let company: Company;
+
             if (post.businessId) {
-              const companyResponse = await axios.get(`${API_BASE_URL}/api/companies/${post.businessId}`);
+              const companyResponse = await axios.get(
+                `${API_BASE_URL}/api/companies/${post.businessId}`
+              );
               company = companyResponse.data.company;
             } else {
-              // Fallback company data
               company = {
-                _id: 'unknown',
+                _id: "unknown",
                 rank: 0,
-                name: 'Unknown Business',
-                description: '',
-                followers: '0',
-                trend: '',
-                siteUrl: '#',
-                logoUrl: '',
+                name: "Unknown Business",
+                description: "",
+                followers: "0",
+                trend: "",
+                siteUrl: "#",
+                logoUrl: "",
                 posts: [],
                 postCategories: [],
                 products: [],
                 productCategories: [],
-                engagementRate: '0.0'
+                engagementRate: "0.0",
               };
             }
-            
+
             setSelectedPost({ post, company });
           }
         } catch (err) {
@@ -5704,15 +5745,12 @@ const App = () => {
     if (selectedPostId) {
       loadPostData();
     }
-  }, [selectedPostId]);
+  }, [selectedPostId, selectedPost]);
 
-  // Load all companies and products for search
   useEffect(() => {
     const loadSearchData = async () => {
       try {
-        const companiesResponse = await fetch(
-          `${API_BASE_URL}/api/business/all`
-        );
+        const companiesResponse = await fetch(`${API_BASE_URL}/api/business/all`);
         const companiesData = await companiesResponse.json();
 
         if (Array.isArray(companiesData)) {
@@ -5730,16 +5768,20 @@ const App = () => {
                 );
                 const postsData = await postsResponse.json();
                 const posts = postsData.posts || [];
+
                 const totalLikes = posts.reduce(
                   (sum: number, post: Post) => sum + (post.likes || 0),
                   0
                 );
+
                 const totalComments = posts.reduce(
                   (sum: number, post: Post) => sum + (post.comments || 0),
                   0
                 );
+
                 const totalInteractions = totalLikes + totalComments;
                 const followerCount = parseInt(item.followers) || 1000;
+
                 const engagementRate =
                   followerCount > 0
                     ? ((totalInteractions / followerCount) * 100).toFixed(1)
@@ -5751,22 +5793,20 @@ const App = () => {
                   name: item.businessName || "Unnamed Business",
                   description:
                     item.businessDescription || "No description available",
-                  followers:
-                    item.followers,
-                    trend: "Rising",
+                  followers: item.followers,
+                  trend: "Rising",
                   siteUrl: item.businessWebsite || "#",
-                  logoUrl:
-                    item.logoUrl,
+                  logoUrl: item.logoUrl,
                   posts: [],
                   postCategories: ["All"],
-                  products: products,
+                  products,
                   productCategories: [
                     "All",
                     ...new Set(products.map((p: Product) => p.category)),
                   ],
                   totalPosts: 0,
                   totalProducts: products.length,
-                  engagementRate: engagementRate,
+                  engagementRate,
                 };
               } catch (error) {
                 console.error(`Error loading company ${item._id}:`, error);
@@ -5778,6 +5818,7 @@ const App = () => {
           const validCompanies = companiesWithDetails.filter(
             Boolean
           ) as Company[];
+
           setAllCompanies(validCompanies);
 
           const allProductsList: Product[] = [];
@@ -5790,6 +5831,7 @@ const App = () => {
               });
             });
           });
+
           setAllProducts(allProductsList);
         }
       } catch (err) {
@@ -5800,7 +5842,6 @@ const App = () => {
     loadSearchData();
   }, []);
 
-  // Search functionality
   const handleSearch = useCallback(
     async (query: string) => {
       const lowerQuery = query.toLowerCase().trim();
@@ -5833,7 +5874,7 @@ const App = () => {
           .filter(
             (product) =>
               product.name?.toLowerCase().includes(lowerQuery) ||
-              product.category.toLowerCase().includes(lowerQuery) ||
+              product.category?.toLowerCase().includes(lowerQuery) ||
               product.tags?.some((tag) =>
                 tag.toLowerCase().includes(lowerQuery)
               )
@@ -5868,14 +5909,14 @@ const App = () => {
       setTimeout(() => {
         const productsTab = document.querySelector(
           '.tab[data-tab="Products"]'
-        ) as HTMLElement;
+        ) as HTMLElement | null;
         if (productsTab) productsTab.click();
       }, 100);
     }
   };
 
   const handleSearchClick = () => {
-    navigate('#search');
+    navigate("#search");
     setSearchQuery("");
     setSearchResults([]);
   };
@@ -5896,31 +5937,34 @@ const App = () => {
     setUser(null);
     localStorage.removeItem("user");
     localStorage.removeItem("authToken");
-    navigate('#home');
+    navigate("#home");
   };
 
   const handleNavClick = (page: string) => {
     switch (page) {
       case "Home":
-        navigate('#home');
+        navigate("#home");
         break;
       case "Profile":
-        navigate('#profile');
+        navigate("#profile");
         break;
       case "Posts":
-        navigate('#posts');
+        navigate("#posts");
         break;
       case "About":
-        navigate('#about');
+        navigate("#about");
+        break;
+      case "Bot":
+        navigate("#bot");
         break;
       default:
-        navigate('#home');
+        navigate("#home");
     }
   };
 
   const handleProfileClick = () => {
     if (user?.isLoggedIn) {
-      navigate('#profile');
+      navigate("#profile");
     } else {
       setShowLoginModal(true);
     }
@@ -5934,7 +5978,6 @@ const App = () => {
     navigate(`#company-${company._id}`);
   };
 
-  // Updated handleSelectPost to store both post and company data
   const handleSelectPost = (post: Post, company: Company) => {
     console.log("Selecting post:", post._id, "from company:", company._id);
     setSelectedPost({ post, company });
@@ -5943,9 +5986,11 @@ const App = () => {
 
   const handleClaimOffer = (promotion: Promotion) => {
     console.log("Claiming offer:", promotion);
+
     if (promotion.targetUrl) {
       window.open(promotion.targetUrl, "_blank");
     }
+
     alert(
       `Offer claimed! ${
         promotion.discountCode
@@ -5959,65 +6004,6 @@ const App = () => {
 
   const renderHeader = () => {
     if (isSearchActive) return null;
-
-    if (selectedPostId)
-      return
-       <Header
-        user={user || undefined}
-        onLogin={() => setShowLoginModal(true)}
-        onLogout={handleLogout}
-        onRegister={() => setShowRegisterModal(true)}
-        onMenuToggle={handleMenuToggle}
-        isMenuOpen={isMobileMenuOpen}
-        onSearchClick={handleSearchClick}
-        onProfileClick={handleProfileClick}
-      />;
-    if (selectedCompany)
-      return <Header
-        user={user || undefined}
-        onLogin={() => setShowLoginModal(true)}
-        onLogout={handleLogout}
-        onRegister={() => setShowRegisterModal(true)}
-        onMenuToggle={handleMenuToggle}
-        isMenuOpen={isMobileMenuOpen}
-        onSearchClick={handleSearchClick}
-        onProfileClick={handleProfileClick}
-      />;
-    if (routeParams.type === "profile")
-      return (
-       <Header
-        user={user || undefined}
-        onLogin={() => setShowLoginModal(true)}
-        onLogout={handleLogout}
-        onRegister={() => setShowRegisterModal(true)}
-        onMenuToggle={handleMenuToggle}
-        isMenuOpen={isMobileMenuOpen}
-        onSearchClick={handleSearchClick}
-        onProfileClick={handleProfileClick}
-      />
-      );
-    if (routeParams.type === "about")
-      return <Header
-        user={user || undefined}
-        onLogin={() => setShowLoginModal(true)}
-        onLogout={handleLogout}
-        onRegister={() => setShowRegisterModal(true)}
-        onMenuToggle={handleMenuToggle}
-        isMenuOpen={isMobileMenuOpen}
-        onSearchClick={handleSearchClick}
-        onProfileClick={handleProfileClick}
-      />;
-    if (routeParams.type === "posts")
-      return<Header
-        user={user || undefined}
-        onLogin={() => setShowLoginModal(true)}
-        onLogout={handleLogout}
-        onRegister={() => setShowRegisterModal(true)}
-        onMenuToggle={handleMenuToggle}
-        isMenuOpen={isMobileMenuOpen}
-        onSearchClick={handleSearchClick}
-        onProfileClick={handleProfileClick}
-      />;
 
     return (
       <Header
@@ -6033,106 +6019,124 @@ const App = () => {
     );
   };
 
-const renderPage = () => {
-  console.log("Current route:", routeParams.type, "selectedPostId:", selectedPostId, "selectedPost:", selectedPost);
-
-  if (isSearchActive) {
-    return (
-      <SearchPage
-        searchQuery={searchQuery}
-        searchResults={searchResults}
-        onSelectSearchResult={handleSelectSearchResult}
-        onSearchChange={handleSearch}
-        onBack={handleSearchBack}
-        loading={searchLoading}
-      />
+  const renderPage = () => {
+    console.log(
+      "Current route:",
+      routeParams.type,
+      "selectedPostId:",
+      selectedPostId,
+      "selectedPost:",
+      selectedPost
     );
-  }
 
-  if (selectedPostId) {
-    if (selectedPost) {
+    if (isSearchActive) {
       return (
-        <PostDetailPage
-          data={selectedPost}
-          onBack={() => window.history.back()}
-          user={user || undefined}
-          onLoginRequest={() => setShowLoginModal(true)}
+        <SearchPage
+          searchQuery={searchQuery}
+          searchResults={searchResults}
+          onSelectSearchResult={handleSelectSearchResult}
+          onSearchChange={handleSearch}
+          onBack={handleSearchBack}
+          loading={searchLoading}
         />
       );
-    } else {
-      return <div className="loading-container"><p>Loading post...</p></div>;
     }
-  }
 
-  if (selectedCompany) {
-    return (
-      <>
-      
-      <ProfilePage
-        company={selectedCompany}
-        onSelectPost={handleSelectPost}
-        user={user || undefined}
-        onLoginRequest={() => setShowLoginModal(true)}
-      />
-      <Footer/></>
-    );
-  }
-
-  switch (routeParams.type) {
-    case "profile":
-      if (user) {
+    if (selectedPostId) {
+      if (selectedPost) {
         return (
-          <UserProfilePage
-            user={user}
+          <PostDetailPage
+            data={selectedPost}
             onBack={() => window.history.back()}
-            onSelectCompany={handleSelectCompany}
-            onLogout={handleLogout}
-            allCompanies={allCompanies}
+            user={user || undefined}
+            onLoginRequest={() => setShowLoginModal(true)}
           />
         );
-      } else {
-        return <div className="p-4 text-center">Please log in to view your profile.</div>;
       }
 
-    case "posts":
       return (
-        <AllPostsPage
-          onSelectPost={handleSelectPost}
-          user={user || undefined}
-          onLoginRequest={() => setShowLoginModal(true)}
-        />
+        <div className="loading-container">
+          <p>Loading post...</p>
+        </div>
       );
+    }
 
-    case "about":
-      return <AboutPage />;
-
-    case "privacy":
-      return <PrivacyPolicyPage />;
-
-    case "terms":
-      return <TermsPage />;
-
-    case "home":
-    default:
+    if (selectedCompany) {
       return (
         <>
-          <Banner />
-          <CompanyListPage
-            onSelectCompany={handleSelectCompany}
+          <ProfilePage
+            company={selectedCompany}
+            onSelectPost={handleSelectPost}
             user={user || undefined}
-            allPromotions={allPromotions}
-            onClaimOffer={handleClaimOffer}
+            onLoginRequest={() => setShowLoginModal(true)}
           />
           <Footer />
         </>
       );
-  }
-};
+    }
 
+    switch (routeParams.type) {
+      case "profile":
+        if (user) {
+          return (
+            <UserProfilePage
+              user={user}
+              onBack={() => window.history.back()}
+              onSelectCompany={handleSelectCompany}
+              onLogout={handleLogout}
+              allCompanies={allCompanies}
+            />
+          );
+        }
+        return <div className="p-4 text-center">Please log in to view your profile.</div>;
+
+      case "posts":
+        return (
+          <AllPostsPage
+            onSelectPost={handleSelectPost}
+            user={user || undefined}
+            onLoginRequest={() => setShowLoginModal(true)}
+          />
+        );
+
+      case "about":
+        return <AboutPage />;
+
+      case "privacy":
+        return <PrivacyPolicyPage />;
+
+      case "terms":
+        return <TermsPage />;
+
+      case "bot":
+  return (
+    <BotPage
+      user={user || undefined}
+      onLoginRequest={() => setShowLoginModal(true)}
+      navigateTo={navigate}
+    />
+  );
+case "chat":
+  return <YourChatPageComponent />;
+      case "home":
+      default:
+        return (
+          <>
+            <Banner />
+            <CompanyListPage
+              onSelectCompany={handleSelectCompany}
+              user={user || undefined}
+              allPromotions={allPromotions}
+              onClaimOffer={handleClaimOffer}
+            />
+            <Footer />
+          </>
+        );
+    }
+  };
 
   return (
-   <div className="app-container">
-      {/* Bottom Navigation - Hidden on laptop/desktop */}
+    <div className="app-container">
       {!isSearchActive && (
         <nav className="app-nav mobile-only">
           <a
@@ -6140,23 +6144,37 @@ const renderPage = () => {
             className={`nav-item ${routeParams.type === "home" ? "active" : ""}`}
             onClick={(e) => {
               e.preventDefault();
-              navigate('#home');
+              navigate("#home");
             }}
           >
             <span className="material-icons">home</span>
             <span className="nav-text">Home</span>
           </a>
+
           <a
             href="#posts"
             className={`nav-item ${routeParams.type === "posts" ? "active" : ""}`}
             onClick={(e) => {
               e.preventDefault();
-              navigate('#posts');
+              navigate("#posts");
             }}
           >
             <span className="material-icons">article</span>
             <span className="nav-text">Posts</span>
           </a>
+
+          <a
+            href="#bot"
+            className={`nav-item ${routeParams.type === "bot" ? "active" : ""}`}
+            onClick={(e) => {
+              e.preventDefault();
+              navigate("#bot");
+            }}
+          >
+            <span className="material-icons">smart_toy</span>
+            <span className="nav-text">Bot</span>
+          </a>
+
           {user && (
             <a
               href="#profile"
@@ -6196,8 +6214,10 @@ const renderPage = () => {
 
         <div className="main-wrapper">{renderPage()}</div>
       </div>
-  
-     <LoginModal
+
+      {!isSearchActive && routeParams.type !== "bot" && <FloatingBotButton />}
+
+      <LoginModal
         isOpen={showLoginModal}
         onClose={() => setShowLoginModal(false)}
         onLogin={handleLogin}
@@ -6219,7 +6239,6 @@ const renderPage = () => {
     </div>
   );
 };
-
 // Add CSS styles
 const promotionStyles = `
 .promotion-banner {
