@@ -7,11 +7,15 @@ const cors = require('cors');
 const multer = require('multer');
 const botRoutes = require("./Routes/bot");
 const chatRoutes = require("./Routes/Chat");
-const Business = require("./models/Business");
+
 const path = require('path');
 const fs = require('fs');
 const { v2: cloudinary } = require("cloudinary");
 const { CloudinaryStorage } = require("multer-storage-cloudinary");
+const Bot = require("./models/Bot");
+const { ingestBot } = require("./services/ingest");
+const { embedText,cosineSim } = require("./lib/embeddings");
+const Chunk = require("./models/Chunk");
 
 require('dotenv').config();
 const app = express();
@@ -115,6 +119,112 @@ ClientSchema.methods.comparePassword = async function (password) {
   return bcrypt.compare(password, this.password);
 };
 const Client = mongoose.model("Client", ClientSchema);
+const businessSchema = new mongoose.Schema({
+    // --- Core Identification & Owner ---
+    user: { 
+        type: mongoose.Schema.Types.ObjectId, 
+        ref: 'User', 
+        required: true,
+        index: true // Explicitly set index here
+    },
+    businessName: { 
+        type: String, 
+        required: true, 
+        trim: true, 
+        maxlength: 100,
+        unique: true // Added unique constraint for stronger data integrity
+    },
+   businessCategory: {
+    type: String,
+    required: true,
+},
+    businessDescription: { 
+        type: String, 
+        required: true, 
+        maxlength: 500 
+    },
+    businessWebsite: { 
+        type: String, 
+        default: null,
+        trim: true,
+unique: true, // Ensure no duplicate URLs
+        // Basic URL validation
+        validate: {
+            validator: function(v) {
+                if (!v) return true;
+                return /^(https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\.[^\s]{2,}|www\.[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\.[^\s]{2,}|https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9]+\.[^\s]{2,}|www\.[a-zA-Z0-9]+\.[^\s]{2,})$/i.test(v);
+            },
+            message: props => `${props.value} is not a valid URL!`
+        }
+    },
+    
+    // --- Contact & Location ---
+    businessAddress: { 
+        type: String, 
+        required: true, 
+        maxlength: 200 
+    },
+    businessPhone: { 
+        type: String, 
+        required: true,
+        trim: true
+    },
+    logoUrl: { 
+        type: String, 
+        default: null 
+    },
+
+    // --- Status and Verification (Updated for Admin Flow) ---
+    status: { 
+        type: String, 
+        // Added 'inactive' for rejected businesses and 'pending' for explicit review phase
+        enum: ['pending', 'active', 'inactive', 'suspended'], 
+        default: 'pending' // Changed default to 'pending' for mandatory review
+    },
+    verified: { 
+        type: Boolean, 
+        default: false 
+    },
+    rejectionReason: { // NEW FIELD: Store reason if admin rejects
+        type: String,
+        default: null
+    },
+    suspensionReason: { // NEW FIELD: Store reason if admin suspends
+        type: String,
+        default: null
+    },
+
+    // --- Metrics and Analytics ---
+    followers: { 
+        type: Number, 
+        default: 1
+    },
+    followersList: [{ 
+        type: mongoose.Schema.Types.ObjectId, 
+        ref: 'Client' 
+    }],
+    totalPosts: { 
+        type: Number, 
+        default: 0 
+    },
+    totalProducts: { 
+        type: Number, 
+        default: 0 
+    },
+    engagementRate: { 
+        type: Number, 
+        default: 0 
+    } ,
+ botId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Bot',
+    default: null
+  }
+}, { 
+    timestamps: true 
+});
+
+const Business = mongoose.model('Business', businessSchema);
 const PostSchema = new mongoose.Schema({
   user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   business: { type: mongoose.Schema.Types.ObjectId, ref: 'Business', required: true },
@@ -4313,20 +4423,263 @@ app.get('/api/businesses/:businessId/promotions', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
-app.get("/api/business/:id", async (req, res) => {
+
+function isValidHttpUrl(value) {
   try {
-    const business = await Business.findById(req.params.id).lean();
+    const u = new URL(String(value || "").trim());
+    return u.protocol === "http:" || u.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+const uploads = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB
+  fileFilter: (req, file, cb) => {
+    const ok =
+      file.mimetype === "application/pdf" ||
+      String(file.originalname || "").toLowerCase().endsWith(".pdf");
+    if (!ok) return cb(new Error("Only PDF files are allowed"));
+    cb(null, true);
+  },
+});
+// POST /api/bot/setup
+app.post("/api/bot/setup", uploads.array("pdfs", 2), async (req, res) => {
+  try {
+    const businessId = String(req.body.businessId || "").trim();
+    const businessName = String(req.body.businessName || "").trim();
+    const websiteUrl = String(req.body.websiteUrl || "").trim();
+
+    if (!businessId || !businessName || !websiteUrl) {
+      return res.status(400).json({
+        success: false,
+        message: "businessId, businessName and websiteUrl are required",
+      });
+    }
+
+    if (!isValidHttpUrl(websiteUrl)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid websiteUrl. Use https://yourwebsite.com",
+      });
+    }
+
+    // (Optional) Verify that the business exists and belongs to the logged-in user
+    const business = await Business.findById(businessId);
     if (!business) {
       return res.status(404).json({ success: false, message: "Business not found" });
     }
-    res.json({ success: true, business });
+    // If you have user authentication, you can check:
+    // if (business.userId.toString() !== req.user.id) {
+    //   return res.status(403).json({ success: false, message: "Unauthorized" });
+    // }
+
+    const bot = await Bot.create({
+      businessId,
+      businessName,
+      websiteUrl,
+      status: "processing",
+      error: "",
+      pagesCrawled: 0,
+      chunksCount: 0,
+      lastIngest: null,
+      lastPdfError: "",
+    });
+
+    // Update the Business document with the new botId
+    await Business.findByIdAndUpdate(businessId, { botId: bot._id });
+
+    // Start ingestion asynchronously
+    ingestBot(bot._id, { websiteUrl: bot.websiteUrl, pdfFiles: req.files || [] })
+      .catch((e) => console.error("Ingest error:", e?.message || e));
+
+    return res.json({
+      success: true,
+      botId: bot._id,
+      status: bot.status,
+    });
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    const msg =
+      err?.message?.includes("Only PDF files are allowed")
+        ? "Only PDF files are allowed"
+        : err.message || "Server error";
+    return res.status(500).json({ success: false, message: msg });
   }
 });
 
-app.use("/api", botRoutes);
-app.use("/api", chatRoutes);
+// POST /api/bot/:botId/reingest
+app.post("/api/bot/:botId/reingest", uploads.array("pdfs", 2), async (req, res) => {
+  try {
+    const botId = req.params.botId;
+    const bot = await Bot.findById(botId);
+    if (!bot) return res.status(404).json({ success: false, message: "Bot not found" });
+
+    const websiteUrl = String(req.body.websiteUrl || bot.websiteUrl || "").trim();
+    if (!isValidHttpUrl(websiteUrl)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid websiteUrl. Use https://yourwebsite.com",
+      });
+    }
+
+    bot.websiteUrl = websiteUrl;
+    bot.status = "processing";
+    bot.error = "";
+    bot.pagesCrawled = 0;
+    bot.chunksCount = 0;
+    bot.lastIngest = null;
+    bot.lastPdfError = "";
+    await bot.save();
+
+    ingestBot(bot._id, { websiteUrl: bot.websiteUrl, pdfFiles: req.files || [] }).catch((e) => {
+      console.error("Reingest error:", e?.message || e);
+    });
+
+    return res.json({ success: true, botId: bot._id, status: "processing" });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message || "Server error" });
+  }
+});
+
+// GET /api/bot/:botId/status
+app.get("/api/bot/:botId/status", async (req, res) => {
+  try {
+    const bot = await Bot.findById(req.params.botId).lean();
+    if (!bot) return res.status(404).json({ success: false, message: "Bot not found" });
+
+    return res.json({
+      success: true,
+      bot: {
+        _id: bot._id,
+        businessId: bot.businessId,
+        businessName: bot.businessName,
+        websiteUrl: bot.websiteUrl,
+        status: bot.status,
+        error: bot.error || "",
+        pagesCrawled: bot.pagesCrawled || 0,
+        chunksCount: bot.chunksCount || 0,
+        lastIngest: bot.lastIngest || null,
+        lastPdfError: bot.lastPdfError || "",
+        updatedAt: bot.updatedAt,
+      },
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message || "Server error" });
+  }
+});
+const MIN_SCORE = Number(process.env.CHAT_MIN_SCORE || 0.30); // ✅ better default
+
+app.post("/api/chat", async (req, res) => {
+  try {
+    const { botId, question } = req.body;
+
+    if (!botId || !question) {
+      return res
+        .status(400)
+        .json({ success: false, message: "botId and question are required" });
+    }
+
+    const bot = await Bot.findById(botId).lean();
+    if (!bot) {
+      return res.status(404).json({ success: false, message: "Bot not found" });
+    }
+
+    // ✅ If ready but chunksCount 0, show correct reason
+    if (bot.status === "ready" && (bot.chunksCount || 0) === 0) {
+      return res.json({
+        success: true,
+        answer:
+          "Your bot is marked ready, but no content was extracted (0 chunks). Please re-ingest with a valid website and/or PDFs. If you uploaded PDFs, check the server logs for PDF parsing issues.",
+        sources: [],
+      });
+    }
+
+    if (bot.status !== "ready") {
+      return res.json({
+        success: true,
+        answer:
+          bot.status === "error"
+            ? `Knowledge base error: ${bot.error || "Unknown error"}`
+            : "Your knowledge base is still processing. Please try again in a moment.",
+        sources: [],
+      });
+    }
+
+    const qVec = await embedText(question);
+
+    // ✅ only fetch needed fields
+    const candidates = await Chunk.find({ botId })
+      .select("text sourceType source meta embedding")
+      .lean();
+
+    if (!candidates.length) {
+      return res.json({
+        success: true,
+        answer:
+          "No knowledge is available yet. Please add your website and PDFs, then wait for processing to finish.",
+        sources: [],
+      });
+    }
+
+    const scored = candidates
+      .map((c) => ({ ...c, score: cosineSim(qVec, c.embedding) }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 6);
+
+    const best = scored[0];
+
+    if (!best || best.score < MIN_SCORE) {
+      return res.json({
+        success: true,
+        answer:
+          "I couldn’t find this information in your uploaded PDFs or website content. Please upload a relevant document or add this information to your website.",
+        sources: [],
+      });
+    }
+
+    // ✅ better answer: combine top 2-3 chunks (more useful than returning only one chunk)
+    const take = scored.filter((s) => s.score >= MIN_SCORE).slice(0, 3);
+    const answer = take.map((x) => x.text).join("\n\n");
+
+    const sources = scored.map((s) => ({
+      type: s.sourceType,
+      source: s.source,
+      meta: s.meta,
+      score: Number(s.score.toFixed(3)),
+      snippet: s.text.slice(0, 220) + (s.text.length > 220 ? "…" : ""),
+    }));
+
+    return res.json({ success: true, answer, sources });
+  } catch (err) {
+    return res
+      .status(500)
+      .json({ success: false, message: err.message || "Server error" });
+  }
+});
+app.get("/api/business/:id", async (req, res) => {
+  try {
+    const business = await Business.findById(req.params.id);
+
+    if (!business) {
+      return res.status(404).json({
+        success: false,
+        message: "Business not found"
+      });
+    }
+
+    res.json({
+      success: true,
+      business
+    });
+
+  } catch (error) {
+    console.error("Business fetch error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error"
+    });
+  }
+});
 
 const PORT = process.env.PORT || 5000;
 

@@ -24,7 +24,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import api from "@/lib/api";
-import { ChatInterface } from "@/components/Chat/Chatinterface"; // adjust path
 
 // ----------------------------------------------------------------------
 // Simple cn utility
@@ -179,7 +178,7 @@ export const useApp = () => {
 };
 
 // ----------------------------------------------------------------------
-// ChatbotWizard Component
+// ChatbotWizard Component (setup only)
 // ----------------------------------------------------------------------
 type ChatbotWizardProps = {
   businessId: string;
@@ -207,21 +206,16 @@ const isValidUrl = (value: string) => {
 
 export function ChatbotWizard({ businessId, onComplete }: ChatbotWizardProps) {
   const navigate = useNavigate();
-  const { setupBot, fetchBotStatus, askBot } = useApp(); // askBot might be used by ChatInterface
+  const { setupBot, fetchBotStatus } = useApp();
 
-  // State for business/bot existence
-  const [loadingBusiness, setLoadingBusiness] = useState(true);
-  const [businessName, setBusinessName] = useState("");
-  const [existingBotId, setExistingBotId] = useState<string | null>(null);
-
-  // Local form state (only used if no bot)
+  // Local form state
   const [step, setStep] = useState(1);
   const [name, setName] = useState("");
   const [url, setUrl] = useState("");
   const [pdfFiles, setPdfFiles] = useState<File[]>([]);
   const [localError, setLocalError] = useState("");
 
-  // Bot progress state (only used if setting up)
+  // Bot progress state
   const [botId, setBotId] = useState<string | null>(null);
   const [botStatus, setBotStatus] = useState<BotStatus>("idle");
   const [botError, setBotError] = useState("");
@@ -233,52 +227,6 @@ export function ChatbotWizard({ businessId, onComplete }: ChatbotWizardProps) {
   const fileRef = useRef<HTMLInputElement | null>(null);
   const pollRef = useRef<number | null>(null);
 
-  // Fetch business details to see if bot already exists
-  useEffect(() => {
-    const fetchBusiness = async () => {
-      try {
-        setLoadingBusiness(true);
-        const res = await api.get(`/business/${businessId}`);
-        if (res.data.business) {
-          setBusinessName(res.data.business.businessName || "Business");
-          if (res.data.business.botId) {
-            setExistingBotId(res.data.business.botId);
-          }
-        }
-      } catch (err) {
-        console.error("Failed to fetch business details:", err);
-        setLocalError("Could not load business information.");
-      } finally {
-        setLoadingBusiness(false);
-      }
-    };
-    fetchBusiness();
-  }, [businessId]);
-
-  // If loading business, show spinner
-  if (loadingBusiness) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-background">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        <span className="ml-2 text-muted-foreground">Loading...</span>
-      </div>
-    );
-  }
-
-  // If a bot already exists, show the chat interface
-  if (existingBotId) {
-    return (
-      <ChatInterface
-        botId={existingBotId}
-        companyName={businessName}
-        onBack={() => navigate(-1)} // optional back button
-      />
-    );
-  }
-
-  // ------------------------------------------------------------
-  // Original setup wizard code (unchanged) starts here
-  // ------------------------------------------------------------
   const normalizedUrl = useMemo(() => normalizeUrl(url), [url]);
   const urlOk = useMemo(() => isValidUrl(normalizedUrl), [normalizedUrl]);
   const processing = botStatus === "processing";
