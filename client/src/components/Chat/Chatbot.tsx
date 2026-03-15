@@ -24,7 +24,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import api from "@/lib/api";
-import { ChatInterface } from "@/components/Chat/ChatInterface"; // adjust path
+import { ChatInterface } from "@/components/Chat/Chatinterface"; // adjust path
 
 // ----------------------------------------------------------------------
 // Simple cn utility
