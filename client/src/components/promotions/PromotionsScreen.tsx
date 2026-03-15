@@ -1,25 +1,70 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Tag, Plus, X, Edit, Pause, Play, Trash2, Filter } from 'lucide-react';
+import { Tag, Plus, X, Edit, Pause, Play, Trash2, Filter, Briefcase, AlertCircle, RefreshCw } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import axios from '@/lib/api';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 
-interface PromotionsScreenProps {
-  business: any;
-  notify: (type: string, message: string) => void;
+// ==================== Type Definitions ====================
+interface User {
+  _id: string;
+  firstName?: string;
+  lastName?: string;
+  email?: string;
 }
 
-// Promotion Create Form Modal
-const PromotionCreateForm = ({ businessId, onClose, onSuccess, notify, existingPromotion }: any) => {
+interface Business {
+  _id: string;
+  businessName: string;
+  user: User | string;
+}
+
+interface Promotion {
+  _id: string;
+  name: string;
+  description: string;
+  type: string;
+  couponCode?: string;
+  link?: string;
+  status: string;
+  displayType: string;
+  image?: string;
+  discountType?: string;
+  discountValue?: number;
+  platforms?: string[];
+  business: string;
+}
+
+interface PromotionsScreenProps {
+  business: Business | null | undefined;
+  currentUser: User | null;
+  notify: (type: string, message: string) => void;
+  businessError?: string | null;
+  onRetryBusiness?: () => void;
+}
+
+// ==================== Promotion Create Form Modal ====================
+const PromotionCreateForm = ({ 
+  businessId, 
+  onClose, 
+  onSuccess, 
+  notify, 
+  existingPromotion 
+}: { 
+  businessId: string;
+  onClose: () => void;
+  onSuccess: () => void;
+  notify: (type: string, message: string) => void;
+  existingPromotion?: Promotion | null;
+}) => {
   const [formData, setFormData] = useState({
-    name: '',
-    description: '',
-    type: 'general',
-    couponCode: '',
-    link: '',
-  
-    status: 'draft',
-    displayType: 'banner',
+    name: existingPromotion?.name || '',
+    description: existingPromotion?.description || '',
+    type: existingPromotion?.type || 'general',
+    couponCode: existingPromotion?.couponCode || '',
+    link: existingPromotion?.link || '',
+    status: existingPromotion?.status || 'draft',
+    displayType: existingPromotion?.displayType || 'banner',
   });
 
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -39,79 +84,77 @@ const PromotionCreateForm = ({ businessId, onClose, onSuccess, notify, existingP
     }
   }, [existingPromotion]);
 
- const handleSubmit = async (e: React.FormEvent) => {
-  e.preventDefault();
-  setPromoLoading(true);
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPromoLoading(true);
 
-  try {
-    const isUpdate = !!existingPromotion;
-    
-    // Prepare request data
-    let requestData: any = {
-      name: formData.name,
-      description: formData.description,
-      type: formData.type,
-      link: formData.link,
-      discountType: 'none', // Default to none since we removed the fields
-      discountValue: 0, // Default to 0
-      status: formData.status,
-      displayType: formData.displayType,
-      business: businessId,
-    };
-
-    // Handle coupon code only for coupon type
-    if (formData.type === 'coupon') {
-      requestData.couponCode = formData.couponCode;
-    }
-
-    console.log('Submitting promotion data:', {
-      isUpdate,
-      promotionId: existingPromotion?._id,
-      requestData
-    });
-
-    let response;
-    if (isUpdate) {
-      // For updates
-      response = await axios.put(`/promotions/${existingPromotion._id}`, requestData);
-      console.log('Update response:', response.data);
-    } else {
-      // For new promotions
-      response = await axios.post('/promotions', requestData);
-      console.log('Create response:', response.data);
+    try {
+      const isUpdate = !!existingPromotion;
       
-      // If there's an image file, upload it separately
-      if (imageFile && response.data.data?._id) {
-        const imageFormData = new FormData();
-        imageFormData.append('image', imageFile);
-        await axios.put(`/promotions/${response.data.data._id}/image`, imageFormData, {
-          headers: { 'Content-Type': 'multipart/form-data' },
-        });
-      }
-    }
+      // Prepare request data
+      let requestData: any = {
+        name: formData.name,
+        description: formData.description,
+        type: formData.type,
+        link: formData.link,
+        discountType: 'none',
+        discountValue: 0,
+        status: formData.status,
+        displayType: formData.displayType,
+        business: businessId,
+      };
 
-    if (response.data.success) {
-      notify('success', `Promotion ${isUpdate ? 'updated' : 'created'} successfully.`);
-      onSuccess();
-    } else {
-      notify('error', response.data.message || `Failed to ${existingPromotion ? 'update' : 'create'} promotion.`);
+      // Handle coupon code only for coupon type
+      if (formData.type === 'coupon') {
+        requestData.couponCode = formData.couponCode;
+      }
+
+      console.log('Submitting promotion data:', {
+        isUpdate,
+        promotionId: existingPromotion?._id,
+        requestData
+      });
+
+      let response;
+      if (isUpdate) {
+        response = await axios.put(`/promotions/${existingPromotion._id}`, requestData);
+        console.log('Update response:', response.data);
+      } else {
+        response = await axios.post('/promotions', requestData);
+        console.log('Create response:', response.data);
+        
+        // If there's an image file, upload it separately
+        if (imageFile && response.data.data?._id) {
+          const imageFormData = new FormData();
+          imageFormData.append('image', imageFile);
+          await axios.put(`/promotions/${response.data.data._id}/image`, imageFormData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+          });
+        }
+      }
+
+      if (response.data.success) {
+        notify('success', `Promotion ${isUpdate ? 'updated' : 'created'} successfully.`);
+        onSuccess();
+      } else {
+        notify('error', response.data.message || `Failed to ${existingPromotion ? 'update' : 'create'} promotion.`);
+      }
+    } catch (err: any) {
+      console.error('Promotion save error details:', {
+        message: err.message,
+        response: err.response?.data,
+        status: err.response?.status
+      });
+      
+      const errorMessage = err.response?.data?.message || 
+                          err.response?.data?.error || 
+                          `Failed to ${existingPromotion ? 'update' : 'create'} promotion.`;
+      
+      notify('error', errorMessage);
+    } finally {
+      setPromoLoading(false);
     }
-  } catch (err: any) {
-    console.error('Promotion save error details:', {
-      message: err.message,
-      response: err.response?.data,
-      status: err.response?.status
-    });
-    
-    const errorMessage = err.response?.data?.message || 
-                        err.response?.data?.error || 
-                        `Failed to ${existingPromotion ? 'update' : 'create'} promotion.`;
-    
-    notify('error', errorMessage);
-  } finally {
-    setPromoLoading(false);
-  }
-};
+  };
 
   const platformOptions = [
     { value: 'facebook', label: 'Facebook' },
@@ -121,7 +164,6 @@ const PromotionCreateForm = ({ businessId, onClose, onSuccess, notify, existingP
     { value: 'email', label: 'Email' },
     { value: 'website', label: 'Website' },
   ];
-
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -234,8 +276,8 @@ const PromotionCreateForm = ({ businessId, onClose, onSuccess, notify, existingP
   );
 };
 
-// Promotion Card Component
-const PromotionCard = ({ promotion, onEdit, notify, onStatusChange, onDelete }: any) => {
+// ==================== Promotion Card ====================
+const PromotionCard = ({ promotion, onEdit, notify, onStatusChange, onDelete, isOwner }: any) => {
   const [isActive, setIsActive] = useState(promotion.status === 'active');
   const [loading, setLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -264,58 +306,57 @@ const PromotionCard = ({ promotion, onEdit, notify, onStatusChange, onDelete }: 
       : `₹${promotion.discountValue} OFF`;
   };
 
- const togglePromotionStatus = async () => {
-  setLoading(true);
-  try {
-    const newStatus = isActive ? 'paused' : 'active';
-    
-    console.log('Toggling status for promotion:', {
-      promotionId: promotion._id,
-      currentStatus: promotion.status,
-      newStatus,
-      isActive
-    });
-    
-    // Prepare update data
-    const updateData = {
-      status: newStatus,
-      name: promotion.name,
-      description: promotion.description,
-      type: promotion.type,
-      discountType: promotion.discountType,
-      discountValue: promotion.discountValue,
-      platforms: promotion.platforms,
-      displayType: promotion.displayType,
-      link: promotion.link,
-      business: promotion.business
-    };
-    
-    const res = await axios.put(`/promotions/${promotion._id}`, updateData);
-    
-    console.log('Status toggle response:', res.data);
-    
-    if (res.data.success) {
-      setIsActive(newStatus === 'active');
-      notify('success', `Promotion ${newStatus} successfully.`);
-      onStatusChange();
-    } else {
-      notify('error', res.data.message || 'Failed to update promotion status.');
+  const togglePromotionStatus = async () => {
+    setLoading(true);
+    try {
+      const newStatus = isActive ? 'paused' : 'active';
+      
+      console.log('Toggling status for promotion:', {
+        promotionId: promotion._id,
+        currentStatus: promotion.status,
+        newStatus,
+        isActive
+      });
+      
+      const updateData = {
+        status: newStatus,
+        name: promotion.name,
+        description: promotion.description,
+        type: promotion.type,
+        discountType: promotion.discountType,
+        discountValue: promotion.discountValue,
+        platforms: promotion.platforms,
+        displayType: promotion.displayType,
+        link: promotion.link,
+        business: promotion.business
+      };
+      
+      const res = await axios.put(`/promotions/${promotion._id}`, updateData);
+      
+      console.log('Status toggle response:', res.data);
+      
+      if (res.data.success) {
+        setIsActive(newStatus === 'active');
+        notify('success', `Promotion ${newStatus} successfully.`);
+        onStatusChange();
+      } else {
+        notify('error', res.data.message || 'Failed to update promotion status.');
+      }
+    } catch (err: any) {
+      console.error('Status toggle error:', {
+        message: err.message,
+        response: err.response?.data,
+        status: err.response?.status
+      });
+      
+      const errorMessage = err.response?.data?.message || 
+                          'Failed to update promotion status.';
+      
+      notify('error', errorMessage);
+    } finally {
+      setLoading(false);
     }
-  } catch (err: any) {
-    console.error('Status toggle error:', {
-      message: err.message,
-      response: err.response?.data,
-      status: err.response?.status
-    });
-    
-    const errorMessage = err.response?.data?.message || 
-                        'Failed to update promotion status.';
-    
-    notify('error', errorMessage);
-  } finally {
-    setLoading(false);
-  }
-};
+  };
 
   const handleDelete = async () => {
     if (!window.confirm('Are you sure you want to delete this promotion?')) return;
@@ -368,36 +409,38 @@ const PromotionCard = ({ promotion, onEdit, notify, onStatusChange, onDelete }: 
           <div className="flex items-center justify-between pt-4 border-t border-border">
             <span className="text-2xl font-bold text-primary">{getDiscountText()}</span>
 
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => onEdit(promotion)}
-                className="p-2 text-muted-foreground hover:text-info hover:bg-info/10 rounded-lg transition-colors"
-                title="Edit promotion"
-              >
-                <Edit size={18} />
-              </button>
+            {isOwner && (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => onEdit(promotion)}
+                  className="p-2 text-muted-foreground hover:text-info hover:bg-info/10 rounded-lg transition-colors"
+                  title="Edit promotion"
+                >
+                  <Edit size={18} />
+                </button>
 
-              <button
-                onClick={togglePromotionStatus}
-                disabled={loading}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-1 ${
-                  isActive
-                    ? 'bg-warning/10 text-warning hover:bg-warning/20'
-                    : 'bg-success/10 text-success hover:bg-success/20'
-                } disabled:opacity-50`}
-                title={isActive ? 'Pause promotion' : 'Activate promotion'}
-              >
-                {loading ? '...' : isActive ? <><Pause size={14} /> Pause</> : <><Play size={14} /> Activate</>}
-              </button>
+                <button
+                  onClick={togglePromotionStatus}
+                  disabled={loading}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-1 ${
+                    isActive
+                      ? 'bg-warning/10 text-warning hover:bg-warning/20'
+                      : 'bg-success/10 text-success hover:bg-success/20'
+                  } disabled:opacity-50`}
+                  title={isActive ? 'Pause promotion' : 'Activate promotion'}
+                >
+                  {loading ? '...' : isActive ? <><Pause size={14} /> Pause</> : <><Play size={14} /> Activate</>}
+                </button>
 
-              <button
-                onClick={handleDelete}
-                disabled={deleting}
-                className="px-3 py-1.5 rounded-lg bg-destructive/10 text-destructive hover:bg-destructive/20 text-sm font-medium transition-all flex items-center gap-1 disabled:opacity-50"
-              >
-                {deleting ? '...' : <><Trash2 size={14} /> Delete</>}
-              </button>
-            </div>
+                <button
+                  onClick={handleDelete}
+                  disabled={deleting}
+                  className="px-3 py-1.5 rounded-lg bg-destructive/10 text-destructive hover:bg-destructive/20 text-sm font-medium transition-all flex items-center gap-1 disabled:opacity-50"
+                >
+                  {deleting ? '...' : <><Trash2 size={14} /> Delete</>}
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
@@ -418,32 +461,37 @@ const PromotionCard = ({ promotion, onEdit, notify, onStatusChange, onDelete }: 
   );
 };
 
-// Main Promotions Screen
-const PromotionsScreen = ({ business, notify }: PromotionsScreenProps) => {
-  const [promotions, setPromotions] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+// ==================== Main Promotions Screen ====================
+const PromotionsScreen = ({ business, currentUser, notify, businessError, onRetryBusiness }: PromotionsScreenProps) => {
+  const [promotions, setPromotions] = useState<Promotion[]>([]);
+  const [promotionsLoading, setPromotionsLoading] = useState(false);
+  const [promotionsError, setPromotionsError] = useState<string | null>(null);
   const [filter, setFilter] = useState('all');
   const [isPromotionFormOpen, setIsPromotionFormOpen] = useState(false);
-  const [editingPromotion, setEditingPromotion] = useState<any>(null);
+  const [editingPromotion, setEditingPromotion] = useState<Promotion | null>(null);
 
   const businessId = business?._id;
+  const businessUserId = typeof business?.user === 'object' ? business.user._id : business?.user;
+  const isOwner = !!(currentUser && businessUserId && currentUser._id === businessUserId);
 
   const fetchPromotions = useCallback(async () => {
     if (!businessId) return;
-    setLoading(true);
+    setPromotionsLoading(true);
+    setPromotionsError(null);
     try {
       const res = await axios.get(`/promotions/${businessId}`);
       setPromotions(res.data.promotions || []);
     } catch (error: any) {
+      setPromotionsError('Failed to load promotions. Please try again.');
       notify('error', error.response?.data?.message || 'Failed to fetch promotions.');
     } finally {
-      setLoading(false);
+      setPromotionsLoading(false);
     }
   }, [businessId, notify]);
 
   useEffect(() => {
-    fetchPromotions();
-  }, [fetchPromotions]);
+    if (businessId) fetchPromotions();
+  }, [businessId, fetchPromotions]);
 
   const handlePromotionCreated = () => {
     setIsPromotionFormOpen(false);
@@ -460,14 +508,80 @@ const PromotionsScreen = ({ business, notify }: PromotionsScreenProps) => {
     return promo.status === filter;
   });
 
-  if (loading) {
+  // ========== Business states ==========
+  if (business === undefined) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <LoadingSpinner text="Loading Promotions..." />
+      <div className="max-w-4xl mx-auto p-6">
+        <div className="bg-card rounded-2xl border border-border overflow-hidden animate-pulse">
+          <div className="bg-gradient-to-r from-violet-500/50 to-violet-500/50 p-6">
+            <div className="flex items-center gap-4">
+              <div className="w-20 h-20 rounded-2xl bg-white/30" />
+              <div className="space-y-2">
+                <div className="h-6 w-48 bg-white/30 rounded" />
+                <div className="h-4 w-24 bg-white/30 rounded" />
+              </div>
+            </div>
+          </div>
+          <div className="p-6 grid md:grid-cols-2 gap-6">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className="space-y-2">
+                <div className="h-4 w-20 bg-muted rounded" />
+                <div className="h-5 w-full bg-muted rounded" />
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     );
   }
 
+  if (businessError) {
+    return (
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        className="flex flex-col items-center justify-center py-24 text-center max-w-md mx-auto"
+      >
+        <AlertCircle size={60} className="text-destructive mb-6" />
+        <h2 className="text-2xl font-bold mb-3">Oops! Something went wrong</h2>
+        <p className="text-muted-foreground mb-8">{businessError}</p>
+        {onRetryBusiness && (
+          <button
+            onClick={onRetryBusiness}
+            className="btn-primary flex items-center gap-2 px-6 py-3"
+          >
+            <RefreshCw size={18} />
+            Try Again
+          </button>
+        )}
+      </motion.div>
+    );
+  }
+
+  if (!business) {
+    return (
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        className="flex flex-col items-center justify-center py-24 text-center"
+      >
+        <Briefcase size={60} className="text-muted-foreground mb-6" aria-hidden="true" />
+        <h2 className="text-2xl font-bold mb-3">No Business Registered</h2>
+        <p className="text-muted-foreground mb-8 max-w-md">
+          Register your business to create and manage promotions.
+        </p>
+        <Link
+          to="/create-business"
+          className="btn-primary flex items-center gap-2 px-6 py-3"
+        >
+          <Plus size={18} aria-hidden="true" />
+          Add Business
+        </Link>
+      </motion.div>
+    );
+  }
+
+  // Business exists
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
       {/* Header */}
@@ -481,16 +595,18 @@ const PromotionsScreen = ({ business, notify }: PromotionsScreenProps) => {
             <p className="text-muted-foreground text-sm">Create and manage your promotions</p>
           </div>
         </div>
-        <button
-          onClick={() => {
-            setEditingPromotion(null);
-            setIsPromotionFormOpen(true);
-          }}
-          className="btn-primary flex items-center gap-2"
-        >
-          <Plus size={18} />
-          New Promotion
-        </button>
+        {isOwner && (
+          <button
+            onClick={() => {
+              setEditingPromotion(null);
+              setIsPromotionFormOpen(true);
+            }}
+            className="btn-primary flex items-center gap-2"
+          >
+            <Plus size={18} />
+            New Promotion
+          </button>
+        )}
       </div>
 
       {/* Filters */}
@@ -511,40 +627,63 @@ const PromotionsScreen = ({ business, notify }: PromotionsScreenProps) => {
         ))}
       </div>
 
-      {/* Promotions List */}
-      <div className="space-y-4">
-        {filteredPromotions.length > 0 ? (
-          filteredPromotions.map((promotion) => (
-            <PromotionCard
-              key={promotion._id}
-              promotion={promotion}
-              onEdit={(promo: any) => {
-                setEditingPromotion(promo);
-                setIsPromotionFormOpen(true);
-              }}
-              notify={notify}
-              onStatusChange={fetchPromotions}
-              onDelete={handleDeletePromotion}
-            />
-          ))
-        ) : (
-          <div className="text-center py-16 bg-card rounded-2xl border border-border">
-            <Tag size={48} className="mx-auto text-muted-foreground mb-4" />
-            <h3 className="text-lg font-semibold text-foreground mb-2">No promotions found</h3>
-            <p className="text-muted-foreground mb-6">
-              {filter === 'all' ? "You haven't created any promotions yet." : `No ${filter} promotions found.`}
-            </p>
-            {filter === 'all' && (
-              <button onClick={() => setIsPromotionFormOpen(true)} className="btn-primary">
-                Create Your First Promotion
-              </button>
-            )}
-          </div>
-        )}
-      </div>
+      {/* Promotions loading/error */}
+      {promotionsLoading && (
+        <div className="flex justify-center py-12">
+          <LoadingSpinner text="Loading promotions..." />
+        </div>
+      )}
 
+      {promotionsError && !promotionsLoading && (
+        <div className="text-center py-12">
+          <AlertCircle className="mx-auto text-destructive mb-4" size={40} />
+          <p className="text-muted-foreground mb-4">{promotionsError}</p>
+          <button onClick={fetchPromotions} className="btn-primary">
+            Try Again
+          </button>
+        </div>
+      )}
+
+      {/* Promotions List */}
+      {!promotionsLoading && !promotionsError && (
+        <div className="space-y-4">
+          {filteredPromotions.length > 0 ? (
+            filteredPromotions.map((promotion) => (
+              <PromotionCard
+                key={promotion._id}
+                promotion={promotion}
+                isOwner={isOwner}
+                onEdit={(promo: any) => {
+                  setEditingPromotion(promo);
+                  setIsPromotionFormOpen(true);
+                }}
+                notify={notify}
+                onStatusChange={fetchPromotions}
+                onDelete={handleDeletePromotion}
+              />
+            ))
+          ) : (
+            <div className="text-center py-16 bg-card rounded-2xl border border-border">
+              <Tag size={48} className="mx-auto text-muted-foreground mb-4" />
+              <h3 className="text-lg font-semibold text-foreground mb-2">No promotions found</h3>
+              <p className="text-muted-foreground mb-6">
+                {filter === 'all' 
+                  ? (isOwner ? "You haven't created any promotions yet." : "This business hasn't created any promotions yet.")
+                  : `No ${filter} promotions found.`}
+              </p>
+              {filter === 'all' && isOwner && (
+                <button onClick={() => setIsPromotionFormOpen(true)} className="btn-primary">
+                  Create Your First Promotion
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Promotion Form Modal */}
       <AnimatePresence>
-        {isPromotionFormOpen && (
+        {isPromotionFormOpen && businessId && (
           <PromotionCreateForm
             businessId={businessId}
             onClose={() => {

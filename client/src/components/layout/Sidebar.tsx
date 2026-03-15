@@ -1,8 +1,9 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  Home, Briefcase, Image, ShoppingBag, Tag, LogOut, X, Building
+  Home, Briefcase, Image, ShoppingBag, Tag, LogOut, X, Building, Bot 
 } from 'lucide-react';
 import logo from '../../../icon.png';
+
 interface SidebarProps {
   currentPage: string;
   onPageChange: (page: string) => void;
@@ -19,6 +20,8 @@ const Sidebar = ({ currentPage, onPageChange, business, onLogout, isOpen, onClos
     { name: 'Content Posts', page: 'posts', icon: Image },
     { name: 'Products', page: 'products', icon: ShoppingBag },
     { name: 'Promotions', page: 'promotions', icon: Tag },
+    
+    { name: 'AI Chatbot', page: 'ai-setup', icon: Bot },   // <-- New item
   ];
 
   const handleNavClick = (page: string) => {
@@ -55,11 +58,8 @@ const Sidebar = ({ currentPage, onPageChange, business, onLogout, isOpen, onClos
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl  to-info flex items-center justify-center">
-              <img src={logo} alt="logo" />
+                <img src={logo} alt="logo" />
               </div>
-
-
-              
               <div>
                 <h1 className="text-xl font-bold text-sidebar-foreground">Zooda</h1>
                 <p className="text-xs text-sidebar-muted">Business Hub</p>

@@ -1,20 +1,61 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ShoppingBag, Plus, X, Edit, Tag } from 'lucide-react';
+import { ShoppingBag, Plus, X, Edit, Briefcase, AlertCircle, RefreshCw } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import axios from '@/lib/api';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 
-interface ProductsScreenProps {
-  business: any;
-  notify: (type: string, message: string) => void;
+// ==================== Type Definitions ====================
+interface User {
+  _id: string;
+  firstName?: string;
+  lastName?: string;
+  email?: string;
 }
 
-// Product Create Form Modal
-const ProductCreateForm = ({ businessId, onClose, onSuccess, notify, existingProduct }: any) => {
+interface Business {
+  _id: string;
+  businessName: string;
+  user: User | string;
+}
+
+interface Product {
+  _id: string;
+  name: string;
+  productLink?: string;
+  price: number;
+  tags: string[];
+  image?: { url: string };
+  isActive: boolean;
+  sku?: string;
+}
+
+interface ProductsScreenProps {
+  business: Business | null | undefined; // undefined = loading, null = no business
+  currentUser: User | null;
+  notify: (type: string, message: string) => void;
+  businessError?: string | null;
+  onRetryBusiness?: () => void;
+}
+
+// ==================== Product Create Form Modal ====================
+const ProductCreateForm = ({ 
+  businessId, 
+  onClose, 
+  onSuccess, 
+  notify, 
+  existingProduct 
+}: { 
+  businessId: string;
+  onClose: () => void;
+  onSuccess: () => void;
+  notify: (type: string, message: string) => void;
+  existingProduct?: Product | null;
+}) => {
   const [formData, setFormData] = useState({
     name: existingProduct?.name || '',
     productLink: existingProduct?.productLink || '',
-    price: existingProduct?.price || '',
+    price: existingProduct?.price?.toString() || '',
     tags: existingProduct?.tags || [],
   });
 
@@ -47,7 +88,7 @@ const ProductCreateForm = ({ businessId, onClose, onSuccess, notify, existingPro
     const data = new FormData();
     data.append('businessId', businessId);
     data.append('name', formData.name);
-    data.append('productLink', formData.productLink);
+    data.append('productLink', formData.productLink || '');
     data.append('price', formData.price);
     data.append('tags', JSON.stringify(formData.tags));
 
@@ -196,8 +237,8 @@ const ProductCreateForm = ({ businessId, onClose, onSuccess, notify, existingPro
   );
 };
 
-// Product Card Component
-const ProductCard = ({ product, onDelete, onEdit }: any) => (
+// ==================== Product Card ====================
+const ProductCard = ({ product, onDelete, onEdit, isOwner }: any) => (
   <motion.div
     initial={{ opacity: 0, y: 20 }}
     animate={{ opacity: 1, y: 0 }}
@@ -212,20 +253,22 @@ const ProductCard = ({ product, onDelete, onEdit }: any) => (
           e.target.src = 'https://placehold.co/400x300/1a1a2e/ffffff?text=No+Image';
         }}
       />
-      <div className="absolute top-3 right-3 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-        <button
-          onClick={() => onEdit(product)}
-          className="p-2 bg-info text-white rounded-full hover:bg-info/80 transition-colors"
-        >
-          <Edit size={14} />
-        </button>
-        <button
-          onClick={() => onDelete(product._id)}
-          className="p-2 bg-destructive text-white rounded-full hover:bg-destructive/80 transition-colors"
-        >
-          <X size={14} />
-        </button>
-      </div>
+      {isOwner && (
+        <div className="absolute top-3 right-3 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+          <button
+            onClick={() => onEdit(product)}
+            className="p-2 bg-info text-white rounded-full hover:bg-info/80 transition-colors"
+          >
+            <Edit size={14} />
+          </button>
+          <button
+            onClick={() => onDelete(product._id)}
+            className="p-2 bg-destructive text-white rounded-full hover:bg-destructive/80 transition-colors"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
       <span
         className={`absolute top-3 left-3 px-2 py-1 rounded-full text-xs font-medium ${
           product.isActive ? 'bg-success/90 text-white' : 'bg-destructive/90 text-white'
@@ -261,29 +304,30 @@ const ProductCard = ({ product, onDelete, onEdit }: any) => (
   </motion.div>
 );
 
-// Main Products Screen
-const ProductsScreen = ({ business, notify }: ProductsScreenProps) => {
-  const [products, setProducts] = useState<any[]>([]);
+// ==================== Main Products Screen ====================
+const ProductsScreen = ({ business, currentUser, notify, businessError, onRetryBusiness }: ProductsScreenProps) => {
+  const [products, setProducts] = useState<Product[]>([]);
   const [isProductFormOpen, setIsProductFormOpen] = useState(false);
-  const [editingProduct, setEditingProduct] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [productsLoading, setProductsLoading] = useState(false);
+  const [productsError, setProductsError] = useState<string | null>(null);
 
   const businessId = business?._id;
+  const businessUserId = typeof business?.user === 'object' ? business.user._id : business?.user;
+  const isOwner = !!(currentUser && businessUserId && currentUser._id === businessUserId);
 
   const fetchProducts = useCallback(async () => {
-    if (!businessId) {
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
+    if (!businessId) return;
+    setProductsLoading(true);
+    setProductsError(null);
     try {
       const res = await axios.get(`/product/${businessId}`);
       setProducts(res.data.products || []);
     } catch (error) {
+      setProductsError('Failed to load products. Please try again.');
       notify('error', 'Failed to fetch products.');
     } finally {
-      setLoading(false);
+      setProductsLoading(false);
     }
   }, [businessId, notify]);
 
@@ -297,7 +341,7 @@ const ProductsScreen = ({ business, notify }: ProductsScreenProps) => {
     fetchProducts();
   };
 
-  const handleEditProduct = (product: any) => {
+  const handleEditProduct = (product: Product) => {
     setEditingProduct(product);
     setIsProductFormOpen(true);
   };
@@ -314,14 +358,80 @@ const ProductsScreen = ({ business, notify }: ProductsScreenProps) => {
     }
   };
 
-  if (loading) {
+  // ========== Business states ==========
+  if (business === undefined) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <LoadingSpinner text="Loading Products..." />
+      <div className="max-w-4xl mx-auto p-6">
+        <div className="bg-card rounded-2xl border border-border overflow-hidden animate-pulse">
+          <div className="bg-gradient-to-r from-warning/50 to-warning/50 p-6">
+            <div className="flex items-center gap-4">
+              <div className="w-20 h-20 rounded-2xl bg-white/30" />
+              <div className="space-y-2">
+                <div className="h-6 w-48 bg-white/30 rounded" />
+                <div className="h-4 w-24 bg-white/30 rounded" />
+              </div>
+            </div>
+          </div>
+          <div className="p-6 grid md:grid-cols-2 gap-6">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className="space-y-2">
+                <div className="h-4 w-20 bg-muted rounded" />
+                <div className="h-5 w-full bg-muted rounded" />
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     );
   }
 
+  if (businessError) {
+    return (
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        className="flex flex-col items-center justify-center py-24 text-center max-w-md mx-auto"
+      >
+        <AlertCircle size={60} className="text-destructive mb-6" />
+        <h2 className="text-2xl font-bold mb-3">Oops! Something went wrong</h2>
+        <p className="text-muted-foreground mb-8">{businessError}</p>
+        {onRetryBusiness && (
+          <button
+            onClick={onRetryBusiness}
+            className="btn-primary flex items-center gap-2 px-6 py-3"
+          >
+            <RefreshCw size={18} />
+            Try Again
+          </button>
+        )}
+      </motion.div>
+    );
+  }
+
+  if (!business) {
+    return (
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        className="flex flex-col items-center justify-center py-24 text-center"
+      >
+        <Briefcase size={60} className="text-muted-foreground mb-6" aria-hidden="true" />
+        <h2 className="text-2xl font-bold mb-3">No Business Registered</h2>
+        <p className="text-muted-foreground mb-8 max-w-md">
+          Register your business to add and manage products.
+        </p>
+        <Link
+          to="/create-business"
+          className="btn-primary flex items-center gap-2 px-6 py-3"
+        >
+          <Plus size={18} aria-hidden="true" />
+          Add Business
+        </Link>
+      </motion.div>
+    );
+  }
+
+  // Business exists
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
       {/* Header */}
@@ -335,46 +445,75 @@ const ProductsScreen = ({ business, notify }: ProductsScreenProps) => {
             <p className="text-muted-foreground text-sm">Manage your product listings</p>
           </div>
         </div>
-        <button
-          onClick={() => {
-            setEditingProduct(null);
-            setIsProductFormOpen(true);
-          }}
-          className="btn-primary flex items-center gap-2"
-        >
-          <Plus size={18} />
-          Add Product
-        </button>
-      </div>
-
-      {/* Products Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-        {products.length > 0 ? (
-          products.map((product) => (
-            <ProductCard
-              key={product._id}
-              product={product}
-              onDelete={handleDeleteProduct}
-              onEdit={handleEditProduct}
-            />
-          ))
-        ) : (
-          <div className="col-span-full text-center py-16 bg-card rounded-2xl border border-border">
-            <ShoppingBag size={48} className="mx-auto text-muted-foreground mb-4" />
-            <h3 className="text-lg font-semibold text-foreground mb-2">No products yet</h3>
-            <p className="text-muted-foreground mb-6">Add your first product to get started</p>
-            <button
-              onClick={() => setIsProductFormOpen(true)}
-              className="btn-primary"
-            >
-              Add Product
-            </button>
-          </div>
+        {isOwner && (
+          <button
+            onClick={() => {
+              setEditingProduct(null);
+              setIsProductFormOpen(true);
+            }}
+            className="btn-primary flex items-center gap-2"
+          >
+            <Plus size={18} />
+            Add Product
+          </button>
         )}
       </div>
 
+      {/* Products loading/error */}
+      {productsLoading && (
+        <div className="flex justify-center py-12">
+          <LoadingSpinner text="Loading products..." />
+        </div>
+      )}
+
+      {productsError && !productsLoading && (
+        <div className="text-center py-12">
+          <AlertCircle className="mx-auto text-destructive mb-4" size={40} />
+          <p className="text-muted-foreground mb-4">{productsError}</p>
+          <button onClick={fetchProducts} className="btn-primary">
+            Try Again
+          </button>
+        </div>
+      )}
+
+      {/* Products Grid */}
+      {!productsLoading && !productsError && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          {products.length > 0 ? (
+            products.map((product) => (
+              <ProductCard
+                key={product._id}
+                product={product}
+                isOwner={isOwner}
+                onDelete={handleDeleteProduct}
+                onEdit={handleEditProduct}
+              />
+            ))
+          ) : (
+            <div className="col-span-full text-center py-16 bg-card rounded-2xl border border-border">
+              <ShoppingBag size={48} className="mx-auto text-muted-foreground mb-4" />
+              <h3 className="text-lg font-semibold text-foreground mb-2">No products yet</h3>
+              <p className="text-muted-foreground mb-6">
+                {isOwner 
+                  ? "Add your first product to get started"
+                  : "This business hasn't added any products yet."}
+              </p>
+              {isOwner && (
+                <button
+                  onClick={() => setIsProductFormOpen(true)}
+                  className="btn-primary"
+                >
+                  Add Product
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Product Form Modal */}
       <AnimatePresence>
-        {isProductFormOpen && (
+        {isProductFormOpen && businessId && (
           <ProductCreateForm
             businessId={businessId}
             onClose={() => {

@@ -1,17 +1,15 @@
-// backend/routes/bot.js (CommonJS) ✅ FULL UPDATED
 const express = require("express");
 const multer = require("multer");
 const Bot = require("../models/Bot");
+const Business = require("../models/Business");
 const { ingestBot } = require("../services/ingest");
 
 const router = express.Router();
 
-// -----------------------------
-// Multer: accept ONLY PDFs, max 2 (✅ memoryStorage so file.buffer works)
-// -----------------------------
+// Multer config
 const upload = multer({
-  storage: multer.memoryStorage(), // ✅ IMPORTANT (pdf-parse needs buffer)
-  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB each
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB
   fileFilter: (req, file, cb) => {
     const ok =
       file.mimetype === "application/pdf" ||
@@ -21,9 +19,6 @@ const upload = multer({
   },
 });
 
-// -----------------------------
-// Helpers
-// -----------------------------
 function isValidHttpUrl(value) {
   try {
     const u = new URL(String(value || "").trim());
@@ -33,19 +28,17 @@ function isValidHttpUrl(value) {
   }
 }
 
-// -----------------------------
 // POST /api/bot/setup
-// Creates a bot + starts ingestion
-// -----------------------------
 router.post("/bot/setup", upload.array("pdfs", 2), async (req, res) => {
   try {
+    const businessId = String(req.body.businessId || "").trim();
     const businessName = String(req.body.businessName || "").trim();
     const websiteUrl = String(req.body.websiteUrl || "").trim();
 
-    if (!businessName || !websiteUrl) {
+    if (!businessId || !businessName || !websiteUrl) {
       return res.status(400).json({
         success: false,
-        message: "businessName and websiteUrl are required",
+        message: "businessId, businessName and websiteUrl are required",
       });
     }
 
@@ -56,16 +49,18 @@ router.post("/bot/setup", upload.array("pdfs", 2), async (req, res) => {
       });
     }
 
-    // ✅ DEBUG LOG FIRST
-    console.log("FILES:", (req.files || []).map((f) => ({
-      name: f.originalname,
-      mimetype: f.mimetype,
-      size: f.size,
-      hasBuffer: !!f.buffer,
-      bufferLen: f.buffer?.length || 0,
-    })));
+    // (Optional) Verify that the business exists and belongs to the logged-in user
+    const business = await Business.findById(businessId);
+    if (!business) {
+      return res.status(404).json({ success: false, message: "Business not found" });
+    }
+    // If you have user authentication, you can check:
+    // if (business.userId.toString() !== req.user.id) {
+    //   return res.status(403).json({ success: false, message: "Unauthorized" });
+    // }
 
     const bot = await Bot.create({
+      businessId,
       businessName,
       websiteUrl,
       status: "processing",
@@ -76,7 +71,10 @@ router.post("/bot/setup", upload.array("pdfs", 2), async (req, res) => {
       lastPdfError: "",
     });
 
-    // ✅ run ingestion async (non-blocking)
+    // Update the Business document with the new botId
+    await Business.findByIdAndUpdate(businessId, { botId: bot._id });
+
+    // Start ingestion asynchronously
     ingestBot(bot._id, { websiteUrl: bot.websiteUrl, pdfFiles: req.files || [] })
       .catch((e) => console.error("Ingest error:", e?.message || e));
 
@@ -90,19 +88,14 @@ router.post("/bot/setup", upload.array("pdfs", 2), async (req, res) => {
       err?.message?.includes("Only PDF files are allowed")
         ? "Only PDF files are allowed"
         : err.message || "Server error";
-
     return res.status(500).json({ success: false, message: msg });
   }
 });
 
-// -----------------------------
 // POST /api/bot/:botId/reingest
-// Rebuild knowledge base after user updates website/pdfs
-// -----------------------------
 router.post("/bot/:botId/reingest", upload.array("pdfs", 2), async (req, res) => {
   try {
     const botId = req.params.botId;
-
     const bot = await Bot.findById(botId);
     if (!bot) return res.status(404).json({ success: false, message: "Bot not found" });
 
@@ -133,10 +126,7 @@ router.post("/bot/:botId/reingest", upload.array("pdfs", 2), async (req, res) =>
   }
 });
 
-// -----------------------------
 // GET /api/bot/:botId/status
-// Frontend polling endpoint
-// -----------------------------
 router.get("/bot/:botId/status", async (req, res) => {
   try {
     const bot = await Bot.findById(req.params.botId).lean();
@@ -146,6 +136,7 @@ router.get("/bot/:botId/status", async (req, res) => {
       success: true,
       bot: {
         _id: bot._id,
+        businessId: bot.businessId,
         businessName: bot.businessName,
         websiteUrl: bot.websiteUrl,
         status: bot.status,

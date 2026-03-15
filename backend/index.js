@@ -7,7 +7,7 @@ const cors = require('cors');
 const multer = require('multer');
 const botRoutes = require("./Routes/bot");
 const chatRoutes = require("./Routes/Chat");
-
+const Business = require("./models/Business");
 const path = require('path');
 const fs = require('fs');
 const { v2: cloudinary } = require("cloudinary");
@@ -18,6 +18,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 const uploadDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadDir)) {
@@ -40,12 +41,10 @@ const storage = new CloudinaryStorage({
 });
 //'mongodb+srv://akhileshreddy811_db_user:6MQywIJtJR8oLeCo@cluster0.t0i7d7t.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0
 const upload = multer({ storage });
+console.log("MONGODB_URI exists?", !!process.env.MONGODB_URI);
 
 mongoose
-  .connect(process.env.MONGO_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-  })
+  .connect(process.env.MONGODB_URI)
   .then(() => {
     console.log("MongoDB Connected Successfully");
   })
@@ -116,107 +115,6 @@ ClientSchema.methods.comparePassword = async function (password) {
   return bcrypt.compare(password, this.password);
 };
 const Client = mongoose.model("Client", ClientSchema);
-const businessSchema = new mongoose.Schema({
-    // --- Core Identification & Owner ---
-    user: { 
-        type: mongoose.Schema.Types.ObjectId, 
-        ref: 'User', 
-        required: true,
-        index: true // Explicitly set index here
-    },
-    businessName: { 
-        type: String, 
-        required: true, 
-        trim: true, 
-        maxlength: 100,
-        unique: true // Added unique constraint for stronger data integrity
-    },
-   businessCategory: {
-    type: String,
-    required: true,
-},
-    businessDescription: { 
-        type: String, 
-        required: true, 
-        maxlength: 500 
-    },
-    businessWebsite: { 
-        type: String, 
-        default: null,
-        trim: true,
-unique: true, // Ensure no duplicate URLs
-        // Basic URL validation
-        validate: {
-            validator: function(v) {
-                if (!v) return true;
-                return /^(https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\.[^\s]{2,}|www\.[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\.[^\s]{2,}|https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9]+\.[^\s]{2,}|www\.[a-zA-Z0-9]+\.[^\s]{2,})$/i.test(v);
-            },
-            message: props => `${props.value} is not a valid URL!`
-        }
-    },
-    
-    // --- Contact & Location ---
-    businessAddress: { 
-        type: String, 
-        required: true, 
-        maxlength: 200 
-    },
-    businessPhone: { 
-        type: String, 
-        required: true,
-        trim: true
-    },
-    logoUrl: { 
-        type: String, 
-        default: null 
-    },
-
-    // --- Status and Verification (Updated for Admin Flow) ---
-    status: { 
-        type: String, 
-        // Added 'inactive' for rejected businesses and 'pending' for explicit review phase
-        enum: ['pending', 'active', 'inactive', 'suspended'], 
-        default: 'pending' // Changed default to 'pending' for mandatory review
-    },
-    verified: { 
-        type: Boolean, 
-        default: false 
-    },
-    rejectionReason: { // NEW FIELD: Store reason if admin rejects
-        type: String,
-        default: null
-    },
-    suspensionReason: { // NEW FIELD: Store reason if admin suspends
-        type: String,
-        default: null
-    },
-
-    // --- Metrics and Analytics ---
-    followers: { 
-        type: Number, 
-        default: 1
-    },
-    followersList: [{ 
-        type: mongoose.Schema.Types.ObjectId, 
-        ref: 'Client' 
-    }],
-    totalPosts: { 
-        type: Number, 
-        default: 0 
-    },
-    totalProducts: { 
-        type: Number, 
-        default: 0 
-    },
-    engagementRate: { 
-        type: Number, 
-        default: 0 
-    } 
-}, { 
-    timestamps: true 
-});
-
-const Business = mongoose.model('Business', businessSchema);
 const PostSchema = new mongoose.Schema({
   user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   business: { type: mongoose.Schema.Types.ObjectId, ref: 'Business', required: true },
@@ -472,27 +370,27 @@ const categorySchema = new mongoose.Schema({
 const Category = mongoose.model('Category', categorySchema);
 
 const authMiddleware = (req, res, next) => {
-    // 1. Get token from header (Authorization: Bearer <token>)
-    const token = req.header('Authorization')?.replace('Bearer ', '');
+  const token = req.header("Authorization")?.replace("Bearer ", "");
 
-    if (!token) {
-        return res.status(401).json({ message: 'No token, authorization denied' });
-    }
+  if (!token) {
+    return res.status(401).json({ message: "No token, authorization denied" });
+  }
 
-    try {
-        // 2. Verify token: MUST use the same key as generateToken
-        const secret = process.env.JWT_SECRET || 'your_jwt_secret'; // Use ENV var!
-        const decoded = jwt.verify(token, secret);
-        
-        // 3. Attach the decoded user payload to the request object
-        req.user = decoded; 
-        
-        next(); // Proceed to the route handler
-    } catch (err) {
-        // Token is invalid (expired, wrong signature, etc.)
-        console.error("JWT Verification Error:", err.message);
-        return res.status(401).json({ message: 'Token is not valid or expired' });
-    }
+  try {
+    const secret = process.env.JWT_SECRET || "BANNU9";
+
+    const decoded = jwt.verify(token, secret);
+
+    req.user = decoded;
+
+    next();
+  } catch (err) {
+    console.error("JWT Verification Error:", err.message);
+
+    return res.status(401).json({
+      message: "Token is not valid or expired",
+    });
+  }
 };
 const generateToken = (user) => {
   return jwt.sign(
@@ -501,8 +399,8 @@ const generateToken = (user) => {
       email: user.email,
       role: user.role,
     },
-    process.env.JWT_SECRET || "your_jwt_secret_key",
-    { expiresIn: "7d" } // token valid for 7 days
+    process.env.JWT_SECRET,
+    { expiresIn: "30d" }
   );
 };
 const getUserBusiness = async (userId) => {
@@ -514,6 +412,7 @@ const getUserBusiness = async (userId) => {
     return null; 
   }
 };
+
 app.post('/api/register', async (req, res) => {
   try {
     const { firstName, lastName, email, password } = req.body;
@@ -1085,6 +984,33 @@ app.get("/api/dashboard/:businessId", async (req, res) => {
     });
   }
 });
+app.get("/api/business/me", authMiddleware, async (req, res) => {
+  try {
+    const business = await Business.findOne({ user: req.user.id })
+      .populate("user", "firstName lastName email avatar")
+      .lean();
+
+    if (!business) {
+      return res.status(404).json({
+        success: false,
+        message: "No business found for this user",
+      });
+    }
+
+    res.json({
+      success: true,
+      business,
+    });
+  } catch (error) {
+    console.error("Fetch business error:", error);
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch business",
+      ...(process.env.NODE_ENV === "development" && { error: error.message }),
+    });
+  }
+});
 app.put('/api/profile', async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
@@ -1121,128 +1047,119 @@ app.put('/api/profile', async (req, res) => {
     res.status(500).json({ message: 'Server error while updating profile' });
   }
 });
-app.post("/api/business", authMiddleware, upload.single("media"), async (req, res) => {
-  try {
-    const {
-      businessName,
-      businessCategory,
-      businessDescription,
-      businessWebsite,
-      businessAddress,
-      businessPhone,
-    } = req.body;
+app.post(
+  "/api/business",
+  authMiddleware,
+  upload.single("media"),
+  async (req, res) => {
+    try {
+      const userId = req.user.id || req.user._id;
 
-    // Validate required fields
-    if (!businessName || !businessCategory || !businessDescription || !businessAddress || !businessPhone) {
-      return res.status(400).json({ message: "All business fields are required" });
-    }
+      const {
+        businessName,
+        businessCategory,
+        businessDescription,
+        businessWebsite,
+        businessAddress,
+        businessPhone,
+      } = req.body;
 
-    // Validate field lengths
-    if (businessName.length < 2 || businessName.length > 100) {
-      return res.status(400).json({ message: "Business name must be between 2 and 100 characters" });
-    }
-
-    if (businessDescription.length < 10 || businessDescription.length > 500) {
-      return res.status(400).json({ message: "Business description must be between 10 and 500 characters" });
-    }
-
-    if (businessAddress.length > 200) {
-      return res.status(400).json({ message: "Business address must be less than 200 characters" });
-    }
-
-    // Validate phone number
-    const phoneRegex = /^[\+]?[1-9][\d]{0,15}$/;
-    const cleanPhone = businessPhone.replace(/[\s\-\(\)]/g, "");
-    if (!phoneRegex.test(cleanPhone)) {
-      return res.status(400).json({ message: "Please enter a valid phone number" });
-    }
-
-    // Validate website if provided
-    if (businessWebsite && businessWebsite.trim() !== "") {
-      try {
-        new URL(businessWebsite);
-      } catch (error) {
-        return res.status(400).json({ message: "Please enter a valid website URL" });
+      if (!businessName || !businessCategory || !businessDescription || !businessAddress || !businessPhone) {
+        return res.status(400).json({ message: "All business fields are required" });
       }
-    }
 
-    // Check if user already has a business
-    const existingBusiness = await Business.findOne({ user: req.user.id });
-    if (existingBusiness) {
-      return res.status(400).json({ message: "You already have a business registered" });
-    }
+      const cleanPhone = businessPhone.replace(/[\s\-\(\)]/g, "");
 
-    // Check for duplicate business name
-    const duplicateBusiness = await Business.findOne({
-      businessName: new RegExp(`^${businessName.trim()}$`, "i"),
-    });
-    if (duplicateBusiness) {
-      return res.status(400).json({ message: "A business with this name already exists" });
-    }
+      const phoneRegex = /^[\+]?[1-9][\d]{0,15}$/;
+      if (!phoneRegex.test(cleanPhone)) {
+        return res.status(400).json({ message: "Please enter a valid phone number" });
+      }
 
-    // ✅ Prepare business data
-    const businessData = {
-      user: req.user.id,
-      businessName: businessName.trim(),
-      businessCategory,
-      businessDescription: businessDescription.trim(),
-      businessAddress: businessAddress.trim(),
-      businessPhone: cleanPhone,
-      businessWebsite:
-        businessWebsite && businessWebsite.trim() !== "" ? businessWebsite.trim() : null,
-      status: "pending",
-      verified: false,
-    };
+      if (businessWebsite && businessWebsite.trim() !== "") {
+        try {
+          new URL(businessWebsite);
+        } catch {
+          return res.status(400).json({ message: "Please enter a valid website URL" });
+        }
+      }
 
-    // ✅ If file uploaded, use Cloudinary URL
-    if (req.file && req.file.path) {
-      businessData.logoUrl = req.file.path; // Cloudinary gives a secure URL here
-    }
+      const existingBusiness = await Business.findOne({ user: userId });
 
-    // ✅ Create business
-    const business = await Business.create(businessData);
+      if (existingBusiness) {
+        return res.status(400).json({
+          message: "You already have a business registered",
+        });
+      }
 
-    // ✅ Update user role
-    await User.findByIdAndUpdate(req.user.id, {
-      role: "business_owner",
-      hasBusiness: true,
-    });
+      const duplicateBusiness = await Business.findOne({
+        businessName: new RegExp(`^${businessName.trim()}$`, "i"),
+      });
 
-    // ✅ Populate response
-    const populatedBusiness = await Business.findById(business._id)
-      .populate("user", "firstName lastName email avatar")
-      .lean();
+      if (duplicateBusiness) {
+        return res.status(400).json({
+          message: "A business with this name already exists",
+        });
+      }
 
-    res.status(201).json({
-      success: true,
-      message: "Business registered successfully!",
-      business: populatedBusiness,
-    });
-  } catch (error) {
-    console.error("Create business error:", error);
+      const businessData = {
+        user: userId,
+        businessName: businessName.trim(),
+        businessCategory,
+        businessDescription: businessDescription.trim(),
+        businessAddress: businessAddress.trim(),
+        businessPhone: cleanPhone,
+        businessWebsite:
+          businessWebsite && businessWebsite.trim() !== ""
+            ? businessWebsite.trim()
+            : null,
+        status: "pending",
+        verified: false,
+      };
 
-    // Handle Mongoose validation errors
-    if (error.name === "ValidationError") {
-      const errors = Object.values(error.errors).map((err) => err.message);
-      return res.status(400).json({
-        message: "Validation failed",
-        errors,
+      if (req.file?.path) {
+        businessData.logoUrl = req.file.path;
+      }
+
+      const business = await Business.create(businessData);
+
+      await User.findByIdAndUpdate(userId, {
+        role: "business_owner",
+        hasBusiness: true,
+      });
+
+      const populatedBusiness = await Business.findById(business._id)
+        .populate("user", "firstName lastName email avatar")
+        .lean();
+
+      res.status(201).json({
+        success: true,
+        message: "Business registered successfully!",
+        business: populatedBusiness,
+      });
+
+    } catch (error) {
+      console.error("Create business error:", error);
+
+      if (error.name === "ValidationError") {
+        const errors = Object.values(error.errors).map((err) => err.message);
+        return res.status(400).json({
+          message: "Validation failed",
+          errors,
+        });
+      }
+
+      if (error.code === 11000) {
+        return res.status(400).json({
+          message: "Duplicate business data detected",
+        });
+      }
+
+      res.status(500).json({
+        message: "Internal server error while creating business",
       });
     }
-
-    // Handle duplicate key error
-    if (error.code === 11000) {
-      return res.status(400).json({
-        message: "Business with this name already exists",
-      });
-    }
-
-    res.status(500).json({
-      message: "Internal server error while creating business",
-      ...(process.env.NODE_ENV === "development" && { error: error.message }),
-    });
   }
-});
+);
 app.get('/api/business', async (req, res) => {
   try {
     // ✅ Get userId from query parameters (since it's a GET request)
@@ -1508,7 +1425,8 @@ app.put("/api/business/:businessId", authMiddleware, upload.single("media"), asy
       ...(process.env.NODE_ENV === "development" && { error: error.message }),
     });
   }
-});app.post("/api/posts", authMiddleware, upload.single("media"), async (req, res) => {
+});
+app.post("/api/posts", authMiddleware, upload.single("media"), async (req, res) => {
   try {
     const { content, platforms, scheduledFor, tags, category, caption } = req.body;
 
@@ -4393,6 +4311,17 @@ app.get('/api/businesses/:businessId/promotions', async (req, res) => {
     res.json({ promotions });
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+});
+app.get("/api/business/:id", async (req, res) => {
+  try {
+    const business = await Business.findById(req.params.id).lean();
+    if (!business) {
+      return res.status(404).json({ success: false, message: "Business not found" });
+    }
+    res.json({ success: true, business });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 

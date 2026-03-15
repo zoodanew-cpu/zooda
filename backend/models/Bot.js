@@ -1,8 +1,12 @@
-// backend/models/Bot.js ✅ FULL UPDATED (adds lastIngest + lastPdfError)
 const mongoose = require("mongoose");
 
 const BotSchema = new mongoose.Schema(
   {
+    businessId: { 
+      type: mongoose.Schema.Types.ObjectId, 
+      ref: "Business", 
+      required: true 
+    },
     businessName: { type: String, required: true },
     websiteUrl: { type: String, required: true },
 
@@ -16,8 +20,7 @@ const BotSchema = new mongoose.Schema(
     pagesCrawled: { type: Number, default: 0 },
     chunksCount: { type: Number, default: 0 },
 
-    // ✅ progress for UI
-    lastIngest: { type: Object, default: null }, // { type, current, total, file? }
+    lastIngest: { type: Object, default: null },
     lastPdfError: { type: String, default: "" },
   },
   { timestamps: true }

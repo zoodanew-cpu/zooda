@@ -1,19 +1,69 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  Image, Plus, X, Heart, MessageCircle, Clock, Edit, Trash2, Send
+  Image, Plus, X, Heart, MessageCircle, Clock, Edit, Trash2, Send, AlertCircle, RefreshCw
 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import axios from '@/lib/api';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 
-interface PostsScreenProps {
-  business: any;
-  currentUser: any;
-  notify: (type: string, message: string) => void;
+// ==================== Type Definitions ====================
+interface User {
+  _id: string;
+  firstName?: string;
+  lastName?: string;
+  name?: string;
+  email?: string;
 }
 
-// Post Create Form Modal
-const PostCreateForm = ({ businessId, onClose, onSuccess, notify, existingPost }: any) => {
+interface Business {
+  _id: string;                     // Business ID
+  businessName: string;
+  businessCategory: string;
+  businessDescription?: string;
+  businessAddress?: string;
+  businessPhone?: string;
+  businessWebsite?: string;
+  logoUrl?: string;
+  user: User | string;              // Populated user or user ID
+  // Add any other fields returned by your API
+}
+
+interface Post {
+  _id: string;
+  content: string;
+  mediaUrl?: string;
+  createdAt: string;
+  scheduledFor?: string;
+  category: string;
+  likesCount: number;
+  likesList: Array<{ _id: string; name: string; email?: string }>;
+  user?: string;          // ID of the user who created the post (if personal account)
+  business: string;       // ID of the business this post belongs to
+}
+
+interface PostsScreenProps {
+  business: Business | null | undefined;  // undefined = loading, null = no business
+  currentUser: User | null;
+  notify: (type: string, message: string) => void;
+  businessError?: string | null;          // optional error from parent
+  onRetryBusiness?: () => void;           // optional retry function
+}
+
+// ==================== Post Create Form Modal ====================
+const PostCreateForm = ({ 
+  businessId, 
+  onClose, 
+  onSuccess, 
+  notify, 
+  existingPost 
+}: { 
+  businessId: string;
+  onClose: () => void;
+  onSuccess: () => void;
+  notify: (type: string, message: string) => void;
+  existingPost?: Post | null;
+}) => {
   const defaultTags = ['General', 'Offer', 'Update', 'Announcement'];
 
   const [formData, setFormData] = useState({
@@ -27,7 +77,7 @@ const PostCreateForm = ({ businessId, onClose, onSuccess, notify, existingPost }
   const [mediaFile, setMediaFile] = useState<File | null>(null);
   const [postLoading, setPostLoading] = useState(false);
 
-  // default tags + existing category if editing
+  // Combine default tags with existing category if editing
   const [categories, setCategories] = useState<string[]>(
     existingPost?.category
       ? Array.from(new Set([existingPost.category, ...defaultTags]))
@@ -182,7 +232,7 @@ const PostCreateForm = ({ businessId, onClose, onSuccess, notify, existingPost }
   );
 };
 
-// Comment Section Component
+// ==================== Comment Section ====================
 const CommentSection = ({ postId, comments, setComments, notify, currentUser }: any) => {
   const [newCommentText, setNewCommentText] = useState('');
   const [isCommenting, setIsCommenting] = useState(false);
@@ -276,7 +326,7 @@ const CommentSection = ({ postId, comments, setComments, notify, currentUser }: 
   );
 };
 
-// Likes Modal
+// ==================== Likes Modal ====================
 const LikesModal = ({ likesList, onClose }: any) => (
   <div className="modal-overlay" onClick={onClose}>
     <motion.div
@@ -314,7 +364,7 @@ const LikesModal = ({ likesList, onClose }: any) => (
   </div>
 );
 
-// Post Card Component
+// ==================== Post Card ====================
 const PostCard = ({ post, notify, currentUser, onDelete, onEdit }: any) => {
   const [likes, setLikes] = useState(post.likesCount || 0);
   const [likesList, setLikesList] = useState(post.likesList || []);
@@ -354,6 +404,7 @@ const PostCard = ({ post, notify, currentUser, onDelete, onEdit }: any) => {
       setLikes(res.data.likesCount);
       setIsLiked(res.data.isLiked);
 
+      // Refresh likes list
       const updated = await axios.get(`/post/${post.business}`);
       const current = updated.data.posts.find((p: any) => p._id === post._id);
       if (current) setLikesList(current.likesList);
@@ -380,6 +431,7 @@ const PostCard = ({ post, notify, currentUser, onDelete, onEdit }: any) => {
               e.target.src = 'https://placehold.co/600x400/1a1a2e/ffffff?text=Image+Not+Found';
             }}
           />
+          {/* Show edit/delete buttons only if current user is the post creator or business owner */}
           {currentUser && (post.user === currentUser._id || post.business === currentUser._id) && (
             <div className="absolute top-3 right-3 flex gap-2">
               <button
@@ -400,6 +452,7 @@ const PostCard = ({ post, notify, currentUser, onDelete, onEdit }: any) => {
       )}
 
       <div className="p-5">
+        {/* If no media, show edit/delete buttons at top right */}
         {!post.mediaUrl && currentUser && (post.user === currentUser._id || post.business === currentUser._id) && (
           <div className="flex gap-2 mb-4 justify-end">
             <button
@@ -477,29 +530,40 @@ const PostCard = ({ post, notify, currentUser, onDelete, onEdit }: any) => {
   );
 };
 
-// Main Posts Screen
-const PostsScreen = ({ business, currentUser, notify }: PostsScreenProps) => {
-  const [posts, setPosts] = useState<any[]>([]);
+// ==================== Main Posts Screen ====================
+const PostsScreen: React.FC<PostsScreenProps> = ({ 
+  business, 
+  currentUser, 
+  notify, 
+  businessError, 
+  onRetryBusiness 
+}) => {
+  const [posts, setPosts] = useState<Post[]>([]);
   const [isPostFormOpen, setIsPostFormOpen] = useState(false);
-  const [editingPost, setEditingPost] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const [editingPost, setEditingPost] = useState<Post | null>(null);
+  const [postsLoading, setPostsLoading] = useState(false);
+  const [postsError, setPostsError] = useState<string | null>(null);
 
   const businessId = business?._id;
+  
+  // Determine if current user is the owner of this business
+  // business.user can be an object (populated) or a string (ID)
+  const businessUserId = typeof business?.user === 'object' ? business.user._id : business?.user;
+  const isOwner = !!(currentUser && businessUserId && currentUser._id === businessUserId);
 
+  // Fetch posts when business is available
   const fetchPosts = useCallback(async () => {
-    if (!businessId) {
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
+    if (!businessId) return;
+    setPostsLoading(true);
+    setPostsError(null);
     try {
       const res = await axios.get(`/post/${businessId}`);
       setPosts(res.data.posts || []);
     } catch (error) {
+      setPostsError('Failed to load posts. Please try again.');
       notify('error', 'Failed to fetch posts.');
     } finally {
-      setLoading(false);
+      setPostsLoading(false);
     }
   }, [businessId, notify]);
 
@@ -513,7 +577,7 @@ const PostsScreen = ({ business, currentUser, notify }: PostsScreenProps) => {
     fetchPosts();
   };
 
-  const handleEditPost = (post: any) => {
+  const handleEditPost = (post: Post) => {
     setEditingPost(post);
     setIsPostFormOpen(true);
   };
@@ -530,14 +594,83 @@ const PostsScreen = ({ business, currentUser, notify }: PostsScreenProps) => {
     }
   };
 
-  if (loading) {
+  // ========== Business states (mirroring BusinessProfileScreen) ==========
+  // 1. Loading (business is undefined)
+  if (business === undefined) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <LoadingSpinner text="Loading Posts..." />
+      <div className="max-w-4xl mx-auto p-6">
+        <div className="bg-card rounded-2xl border border-border overflow-hidden animate-pulse">
+          <div className="bg-gradient-to-r from-primary/50 to-info/50 p-6">
+            <div className="flex items-center gap-4">
+              <div className="w-20 h-20 rounded-2xl bg-white/30" />
+              <div className="space-y-2">
+                <div className="h-6 w-48 bg-white/30 rounded" />
+                <div className="h-4 w-24 bg-white/30 rounded" />
+              </div>
+            </div>
+          </div>
+          <div className="p-6 grid md:grid-cols-2 gap-6">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className="space-y-2">
+                <div className="h-4 w-20 bg-muted rounded" />
+                <div className="h-5 w-full bg-muted rounded" />
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     );
   }
 
+  // 2. Error state (if parent provides businessError)
+  if (businessError) {
+    return (
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        className="flex flex-col items-center justify-center py-24 text-center max-w-md mx-auto"
+      >
+        <AlertCircle size={60} className="text-destructive mb-6" />
+        <h2 className="text-2xl font-bold mb-3">Oops! Something went wrong</h2>
+        <p className="text-muted-foreground mb-8">{businessError}</p>
+        {onRetryBusiness && (
+          <button
+            onClick={onRetryBusiness}
+            className="btn-primary flex items-center gap-2 px-6 py-3"
+          >
+            <RefreshCw size={18} />
+            Try Again
+          </button>
+        )}
+      </motion.div>
+    );
+  }
+
+  // 3. No business registered
+  if (!business) {
+    return (
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        className="flex flex-col items-center justify-center py-24 text-center"
+      >
+        <Briefcase size={60} className="text-muted-foreground mb-6" aria-hidden="true" />
+        <h2 className="text-2xl font-bold mb-3">No Business Registered</h2>
+        <p className="text-muted-foreground mb-8 max-w-md">
+          Register your business to create and manage posts.
+        </p>
+        <Link
+          to="/create-business"
+          className="btn-primary flex items-center gap-2 px-6 py-3"
+        >
+          <Plus size={18} aria-hidden="true" />
+          Add Business
+        </Link>
+      </motion.div>
+    );
+  }
+
+  // 4. Business exists – show posts with their own loading/error states
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
       {/* Header */}
@@ -551,48 +684,77 @@ const PostsScreen = ({ business, currentUser, notify }: PostsScreenProps) => {
             <p className="text-muted-foreground text-sm">Create and manage your posts</p>
           </div>
         </div>
-        <button
-          onClick={() => {
-            setEditingPost(null);
-            setIsPostFormOpen(true);
-          }}
-          className="btn-primary flex items-center gap-2"
-        >
-          <Plus size={18} />
-          New Post
-        </button>
-      </div>
-
-      {/* Posts Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-        {posts.length > 0 ? (
-          posts.map((post) => (
-            <PostCard
-              key={post._id}
-              post={post}
-              notify={notify}
-              currentUser={currentUser}
-              onDelete={handleDeletePost}
-              onEdit={handleEditPost}
-            />
-          ))
-        ) : (
-          <div className="col-span-full text-center py-16 bg-card rounded-2xl border border-border">
-            <Image size={48} className="mx-auto text-muted-foreground mb-4" />
-            <h3 className="text-lg font-semibold text-foreground mb-2">No posts yet</h3>
-            <p className="text-muted-foreground mb-6">Create your first post to get started</p>
-            <button
-              onClick={() => setIsPostFormOpen(true)}
-              className="btn-primary"
-            >
-              Create Post
-            </button>
-          </div>
+        {/* Only show New Post button if user is the business owner */}
+        {isOwner && (
+          <button
+            onClick={() => {
+              setEditingPost(null);
+              setIsPostFormOpen(true);
+            }}
+            className="btn-primary flex items-center gap-2"
+          >
+            <Plus size={18} />
+            New Post
+          </button>
         )}
       </div>
 
+      {/* Posts loading/error states */}
+      {postsLoading && (
+        <div className="flex justify-center py-12">
+          <LoadingSpinner text="Loading posts..." />
+        </div>
+      )}
+
+      {postsError && !postsLoading && (
+        <div className="text-center py-12">
+          <AlertCircle className="mx-auto text-destructive mb-4" size={40} />
+          <p className="text-muted-foreground mb-4">{postsError}</p>
+          <button onClick={fetchPosts} className="btn-primary">
+            Try Again
+          </button>
+        </div>
+      )}
+
+      {/* Posts Grid */}
+      {!postsLoading && !postsError && (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+          {posts.length > 0 ? (
+            posts.map((post) => (
+              <PostCard
+                key={post._id}
+                post={post}
+                notify={notify}
+                currentUser={currentUser}
+                onDelete={handleDeletePost}
+                onEdit={handleEditPost}
+              />
+            ))
+          ) : (
+            <div className="col-span-full text-center py-16 bg-card rounded-2xl border border-border">
+              <Image size={48} className="mx-auto text-muted-foreground mb-4" />
+              <h3 className="text-lg font-semibold text-foreground mb-2">No posts yet</h3>
+              <p className="text-muted-foreground mb-6">
+                {isOwner 
+                  ? "Create your first post to get started" 
+                  : "This business hasn't created any posts yet."}
+              </p>
+              {isOwner && (
+                <button
+                  onClick={() => setIsPostFormOpen(true)}
+                  className="btn-primary"
+                >
+                  Create Post
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Post Create/Edit Modal */}
       <AnimatePresence>
-        {isPostFormOpen && (
+        {isPostFormOpen && businessId && (
           <PostCreateForm
             businessId={businessId}
             onClose={() => {

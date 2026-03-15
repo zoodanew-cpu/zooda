@@ -99,6 +99,7 @@ interface Company {
   businessLogo?: string;
   category?: string;
   subcategory?: string;
+  botId?: string; 
 }
 
 interface User {
@@ -2353,66 +2354,58 @@ const CompanyListPage = ({
         const data = await response.json();
 
         if (Array.isArray(data)) {
-          const companiesWithStats = await Promise.all(
-            data.map(async (item, index) => {
-              try {
-                const postsResponse = await fetch(
-                  `${API_BASE_URL}/api/post/${item._id}`
-                );
-                const postsData = await postsResponse.json();
-                const posts = postsData.posts || [];
+         const companiesWithStats = await Promise.all(
+  data.map(async (item, index) => {
+    try {
+      const postsResponse = await fetch(`${API_BASE_URL}/api/post/${item._id}`);
+      const postsData = await postsResponse.json();
+      const posts = postsData.posts || [];
 
-                const productsResponse = await fetch(
-                  `${API_BASE_URL}/api/product/${item._id}`
-                );
-                const productsData = await productsResponse.json();
-                const products = productsData.products || [];
+      const productsResponse = await fetch(`${API_BASE_URL}/api/product/${item._id}`);
+      const productsData = await productsResponse.json();
+      const products = productsData.products || [];
 
-                const followerCount = parseInt(item.followers) || 1000;
+      const engagementRate = item.engagementRate || 0.0;
 
-                const engagementRate = item.engagementRate || 0.0;
-
-                return {
-                  _id: item._id,
-                  rank: index + 1,
-                  name: item.businessName || "Unnamed Business",
-                  description:
-                    item.businessDescription || "No description available",
-                  followers:
-                    item.followers,
-                  trend: "Rising",
-                  siteUrl: item.businessWebsite || "#",
-                  logoUrl:
-                    item.logoUrl,
-                  posts,
-                  products,
-                  totalPosts: posts.length,
-                  totalProducts: products.length,
-                  engagementRate,
-                  category: item.businessCategory || "Ecommerce",
-                  subcategory: item.subcategory || "General",
-                } as Company;
-              } catch {
-                return {
-                  _id: item._id,
-                  rank: index + 1,
-                  name: item.businessName || "Unnamed Business",
-                  description:
-                    item.businessDescription || "No description available",
-                  followers:
-                    item.followers ,
-                    trend: "Rising",
-                  siteUrl: item.businessWebsite || "#",
-                  logoUrl: item.logoUrl,
-                  posts: [],
-                  products: [],
-                  engagementRate: 0.0,
-                  category: item.businessCategory || "Ecommerce",
-                  subcategory: item.subcategory || "General",
-                } as Company;
-              }
-            })
-          );
+      return {
+        _id: item._id,
+        rank: index + 1,
+        name: item.businessName || "Unnamed Business",
+        description: item.businessDescription || "No description available",
+        followers: item.followers,
+        trend: "Rising",
+        siteUrl: item.businessWebsite || "#",
+        logoUrl: item.logoUrl,
+        posts,
+        products,
+        totalPosts: posts.length,
+        totalProducts: products.length,
+        engagementRate,
+        category: item.businessCategory || "Ecommerce",
+        subcategory: item.subcategory || "General",
+        botId: item.botId,   // ✅ critical line
+      } as Company;
+    } catch (error) {
+      // If fetching posts/products fails, still return basic info
+      return {
+        _id: item._id,
+        rank: index + 1,
+        name: item.businessName || "Unnamed Business",
+        description: item.businessDescription || "No description available",
+        followers: item.followers,
+        trend: "Rising",
+        siteUrl: item.businessWebsite || "#",
+        logoUrl: item.logoUrl,
+        posts: [],
+        products: [],
+        engagementRate: 0.0,
+        category: item.businessCategory || "Ecommerce",
+        subcategory: item.subcategory || "General",
+        botId: item.botId,   // ✅ critical line
+      } as Company;
+    }
+  })
+);
 
           companiesWithStats.sort(
             (a, b) =>
@@ -4285,46 +4278,90 @@ const PostDetailPage = ({ data, onBack, user, onLoginRequest }: PostDetailPagePr
     </div>
   );
 };
-
 interface ProfilePageProps {
   company: Company;
   onSelectPost: (post: Post, company: Company) => void;
   user?: User;
   onLoginRequest?: () => void;
 }
-const ProfilePage = ({
+export const ProfilePage = ({
   company,
   onSelectPost,
   user,
   onLoginRequest,
 }: ProfilePageProps) => {
-  const [activeTab, setActiveTab] = useState<"Posts" | "Products">("Posts");
+  // Tab state
+  const [activeTab, setActiveTab] = useState<"Posts" | "Products" | "AI Chat">(
+    "Posts"
+  );
+
+  // Filter states
   const [activePostCategory, setActivePostCategory] = useState("All");
   const [activeProductTag, setActiveProductTag] = useState("All");
+
+  // Data states
   const [posts, setPosts] = useState<Post[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
+  // Follow states
   const [followers, setFollowers] = useState<number>(
     parseInt(company.followers) || 0
   );
-
   const [isFollowing, setIsFollowing] = useState(false);
+
+  // Post detail states
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [showPostDetail, setShowPostDetail] = useState(false);
   const [showPostsGrid, setShowPostsGrid] = useState(false);
 
-  // Dynamic categories/tags
+  // Filter options
   const [postCategories, setPostCategories] = useState<string[]>(["All"]);
   const [productTags, setProductTags] = useState<string[]>(["All"]);
 
-  // -----------------------------------------------------------
-  // FOLLOW CHECK
-  // -----------------------------------------------------------
+  // AI chat states
+  const [chatInput, setChatInput] = useState("");
+  const [chatMessages, setChatMessages] = useState<
+    { role: "user" | "ai"; text: string }[]
+  >([
+    {
+      role: "ai",
+      text: `Hi! Ask anything about ${company.name}, products, or posts.`,
+    },
+  ]);
+  const [chatLoading, setChatLoading] = useState(false);
+
+  // 🔁 Fallback: fetch botId if not provided in company prop
+  const [fetchedBotId, setFetchedBotId] = useState<string | null>(company.botId || null);
+  const [fetchingBot, setFetchingBot] = useState(false);
+
+  // Fetch botId if missing
+  useEffect(() => {
+    const getBotId = async () => {
+      if (company.botId) {
+        setFetchedBotId(company.botId);
+        return;
+      }
+      setFetchingBot(true);
+      try {
+        const res = await axios.get(`${API_BASE_URL}/api/business/${company._id}`);
+        if (res.data.business?.botId) {
+          setFetchedBotId(res.data.business.botId);
+        }
+      } catch (err) {
+        console.error("Failed to fetch business botId:", err);
+      } finally {
+        setFetchingBot(false);
+      }
+    };
+    getBotId();
+  }, [company._id, company.botId]);
+
+  // Check follow status
   useEffect(() => {
     const checkFollowStatus = async () => {
       if (!user?._id) return;
-
       try {
         const res = await axios.get(
           `${API_BASE_URL}/api/follow/${company._id}/status/${user._id}`
@@ -4334,13 +4371,10 @@ const ProfilePage = ({
         console.error("Error checking follow status:", err);
       }
     };
-
     checkFollowStatus();
   }, [user?._id, company._id]);
 
-  // -----------------------------------------------------------
-  // FETCH POSTS + PRODUCTS
-  // -----------------------------------------------------------
+  // Fetch posts and products
   useEffect(() => {
     const fetchContent = async () => {
       try {
@@ -4358,9 +4392,6 @@ const ProfilePage = ({
         const postsData = await postsRes.json();
         const productsData = await productsRes.json();
 
-        // ----------------------
-        // PROCESS POSTS
-        // ----------------------
         const fetchedPosts = postsData.posts || [];
 
         const processedPosts = fetchedPosts.map((post: Post) => ({
@@ -4383,15 +4414,10 @@ const ProfilePage = ({
 
         setPosts(processedPosts);
 
-        // ----------------------
-        // SET PRODUCTS
-        // ----------------------
         const productArray = productsData.products || [];
         setProducts(productArray);
 
-        // ----------------------
-        // EXTRACT DYNAMIC PRODUCT TAGS
-        // ----------------------
+        // Extract unique tags for filtering
         const uniqueTags = [
           "All",
           ...new Set(
@@ -4403,9 +4429,7 @@ const ProfilePage = ({
         ];
         setProductTags(uniqueTags);
 
-        // ----------------------
-        // EXTRACT POST CATEGORIES
-        // ----------------------
+        // Extract unique categories for filtering
         const uniqueCategories = [
           "All",
           ...new Set(
@@ -4428,20 +4452,17 @@ const ProfilePage = ({
     fetchContent();
   }, [company._id]);
 
-  // -----------------------------------------------------------
-  // FOLLOW HANDLER
-  // -----------------------------------------------------------
+  // Follow handler
   const handleFollow = async () => {
     if (!user?._id) {
-      if (onLoginRequest) onLoginRequest();
+      onLoginRequest?.();
       return;
     }
 
     try {
-      const res = await axios.post(
-        `${API_BASE_URL}/api/follow/${company._id}`,
-        { userId: user._id }
-      );
+      const res = await axios.post(`${API_BASE_URL}/api/follow/${company._id}`, {
+        userId: user._id,
+      });
 
       if (res.data.success) {
         setFollowers(res.data.followers);
@@ -4452,9 +4473,7 @@ const ProfilePage = ({
     }
   };
 
-  // -----------------------------------------------------------
-  // POST DETAIL HANDLERS
-  // -----------------------------------------------------------
+  // Post click handler
   const handlePostImageClick = (post: Post) => {
     setSelectedPost(post);
     setShowPostDetail(true);
@@ -4467,9 +4486,7 @@ const ProfilePage = ({
     setSelectedPost(null);
   };
 
-  // -----------------------------------------------------------
-  // LIKE / COMMENT / SHARE
-  // -----------------------------------------------------------
+  // Like handler
   const handleLike = async (postId: string, postIndex: number) => {
     if (!user?._id) return;
 
@@ -4483,15 +4500,15 @@ const ProfilePage = ({
 
       setPosts(updatedPosts);
 
-      await axios.post(
-        `https://api.zooda.in/api/post/${postId}/like`,
-        { userId: user._id }
-      );
+      await axios.post(`${API_BASE_URL}/api/post/${postId}/like`, {
+        userId: user._id,
+      });
     } catch (err) {
       console.error("Like error:", err);
     }
   };
 
+  // Comment handler
   const handleComment = async (
     postId: string,
     postIndex: number,
@@ -4501,12 +4518,13 @@ const ProfilePage = ({
       return { success: false, error: "Please login to comment" };
     }
 
-    if (!commentText.trim())
+    if (!commentText.trim()) {
       return { success: false, error: "Comment cannot be empty" };
+    }
 
     try {
       const res = await axios.post(
-        `https://api.zooda.in/api/post/${postId}/comment`,
+        `${API_BASE_URL}/api/post/${postId}/comment`,
         {
           text: commentText,
           userId: user._id,
@@ -4515,7 +4533,6 @@ const ProfilePage = ({
 
       const updated = [...posts];
       updated[postIndex].comments = res.data.commentsCount;
-
       setPosts(updated);
 
       return { success: true };
@@ -4525,6 +4542,7 @@ const ProfilePage = ({
     }
   };
 
+  // Share handler
   const handleShare = async (post: Post) => {
     if (navigator.share) {
       try {
@@ -4540,9 +4558,66 @@ const ProfilePage = ({
     }
   };
 
-  // -----------------------------------------------------------
-  // FILTERING
-  // -----------------------------------------------------------
+  // ✅ AI Chat send handler – uses fetchedBotId as fallback
+  const handleSendChat = async () => {
+    if (!chatInput.trim()) return;
+
+    const userMessage = { role: "user" as const, text: chatInput };
+    setChatMessages((prev) => [...prev, userMessage]);
+    setChatInput("");
+    setChatLoading(true);
+
+    try {
+      // Use fetchedBotId if available, otherwise fallback to company.botId
+      const botId = fetchedBotId || company.botId;
+
+      if (!botId) {
+        setChatMessages((prev) => [
+          ...prev,
+          {
+            role: "ai",
+            text: "This business hasn't set up an AI chatbot yet.",
+          },
+        ]);
+        setChatLoading(false);
+        return;
+      }
+
+      const res = await axios.post(`${API_BASE_URL}/api/chat`, {
+        botId,
+        question: chatInput,
+      });
+
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          role: "ai",
+          text: res.data.answer,
+        },
+      ]);
+
+      console.log("Sources:", res.data.sources);
+    } catch (err: any) {
+      console.error("AI chat error:", err);
+      let errorMessage = "Something went wrong while contacting AI.";
+      if (err.response?.data?.message) {
+        errorMessage = err.response.data.message;
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          role: "ai",
+          text: errorMessage,
+        },
+      ]);
+    } finally {
+      setChatLoading(false);
+    }
+  };
+
+  // Filtered lists
   const filteredPosts =
     activePostCategory === "All"
       ? posts
@@ -4557,184 +4632,100 @@ const ProfilePage = ({
             .includes(activeProductTag.toLowerCase())
         );
 
-  // -----------------------------------------------------------
-  // RENDER
-  // -----------------------------------------------------------
   return (
-    <div className="profile-page">
-      <main className="profile-content">
-        {/* -------------------- HEADER (MODIFIED STRUCTURE & INLINE STYLES) -------------------- */}
-        <section
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            width: "100%",
-            gap: "15px",
-
-          }}
-        >
-          {/* Top Row: Logo | Company Name | Actions */}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              width: "100%",
-            }}
-          >
+    <div className="min-h-screen bg-black text-white">
+      <main className="mx-auto w-full max-w-7xl px-4 py-6">
+        {/* Header */}
+        <section className="flex w-full flex-col gap-4 rounded-2xl border border-white/10 bg-white/5 p-4 md:p-6">
+          <div className="flex w-full items-center justify-between gap-4">
             {company.logoUrl ? (
               <img
                 src={company.logoUrl}
                 alt={`${company.name} Logo`}
-                style={{
-                  width: 80,
-                  height: 80,
-                  borderRadius: "50%",
-                  objectFit: "cover",
-                }}
+                className="h-20 w-20 rounded-full object-cover border border-white/10"
                 onError={(e) => (e.currentTarget.style.display = "none")}
               />
             ) : (
-              <div
-                style={{
-                  width: 80,
-                  height: 80,
-                  borderRadius: "50%",
-                  background: "#555",
-                }}
-              ></div>
+              <div className="h-20 w-20 rounded-full bg-zinc-700" />
             )}
 
-            <h2
-              style={{
-                flex: 1,
-                textAlign: "center",
-                fontSize: "1rem",
-                margin: "0",
-                fontWeight: "600",
-              }}
-            >
+            <h2 className="flex-1 text-center text-base font-semibold md:text-xl">
               {company.name}
             </h2>
 
-            {/* ACTIONS COLUMN */}
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: "8px",
-                alignItems: "flex-end",
-              }}
-            >
+            <div className="flex flex-col items-end gap-2">
               <button
-                onClick={() => window.open(company.siteUrl, '_blank')}
-                style={{
-                  padding: "8px 15px",
-                  borderRadius: "8px",
-                  border: "none",
-                  background: "green",
-                  color: "white",
-                  cursor: "pointer",
-                  fontWeight: "600",
-                  width: "110px",
-                }}
+                onClick={() => window.open(company.siteUrl, "_blank")}
+                className="w-[110px] rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-green-700"
               >
                 Visit Site
               </button>
+
               <button
                 onClick={handleFollow}
-                style={{
-                  padding: "8px 15px",
-                  borderRadius: "8px",
-                  border: "none",
-                  background: isFollowing ? "green" : "green",
-                  color: "white",
-                  cursor: "pointer",
-                  fontWeight: "600",
-                  width: "110px",
-                }}
+                className="w-[110px] rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-green-700"
               >
                 {isFollowing ? "Unfollow" : "Follow"}
               </button>
             </div>
           </div>
 
-          {/* Description */}
-          <p
-            style={{
-              margin: "0",
-              color: "#fff",
-              fontSize: ".95rem",
-            }}
-          >
+          <p className="text-sm text-zinc-300 md:text-base">
             {company.description || "No description available."}
           </p>
 
-          {/* Stats */}
-          <div
-            style={{
-              width: "100%",
-              display: "flex",
-              justifyContent: "space-around",
-              padding: "10px 0",
-              borderTop: "1px solid #eee",
-            }}
-          >
-            <div style={{ textAlign: "center" }}>
-              <h4 style={{ margin: 0, fontSize: "1.2rem" }}>{posts.length}</h4>
-              <span style={{ fontSize: ".85rem", color: "#888" }}>Posts</span>
+          <div className="grid grid-cols-3 border-t border-white/10 pt-4 text-center">
+            <div>
+              <h4 className="text-xl font-semibold">{posts.length}</h4>
+              <span className="text-sm text-zinc-400">Posts</span>
             </div>
-
-            <div style={{ textAlign: "center" }}>
-              <h4 style={{ margin: 0, fontSize: "1.2rem" }}>{products.length}</h4>
-              <span style={{ fontSize: ".85rem", color: "#888" }}>Products</span>
+            <div>
+              <h4 className="text-xl font-semibold">{products.length}</h4>
+              <span className="text-sm text-zinc-400">Products</span>
             </div>
-
-            <div style={{ textAlign: "center" }}>
-              <h4 style={{ margin: 0, fontSize: "1.2rem" }}>{followers}</h4>
-              <span style={{ fontSize: ".85rem", color: "#888" }}>Followers</span>
+            <div>
+              <h4 className="text-xl font-semibold">{followers}</h4>
+              <span className="text-sm text-zinc-400">Followers</span>
             </div>
-
-            {/* Always show engagement rate */}
-           
           </div>
         </section>
 
-        {/* -------------------- TABS -------------------- */}
-        <nav className="tabs profile-tabs">
-          <button
-            className={`tab ${activeTab === "Posts" ? "active" : ""}`}
-            onClick={() => setActiveTab("Posts")}
-          >
-            Posts
-          </button>
-
-          <button
-            className={`tab ${activeTab === "Products" ? "active" : ""}`}
-            onClick={() => setActiveTab("Products")}
-          >
-            Products
-          </button>
+        {/* Tabs */}
+        <nav className="mt-6 flex flex-wrap gap-3">
+          {["Posts", "Products", "AI Chat"].map((tab) => (
+            <button
+              key={tab}
+              onClick={() =>
+                setActiveTab(tab as "Posts" | "Products" | "AI Chat")
+              }
+              className={`rounded-full px-5 py-2 text-sm font-medium transition ${
+                activeTab === tab
+                  ? "bg-green-600 text-white"
+                  : "bg-white/5 text-zinc-300 hover:bg-white/10"
+              }`}
+            >
+              {tab}
+            </button>
+          ))}
         </nav>
 
-        {/* ==============================================================
-             CONTENT AREA
-         ============================================================== */}
         {loading ? (
-          <p>Loading...</p>
+          <p className="mt-6 text-zinc-300">Loading...</p>
         ) : error ? (
-          <p className="text-red-500">{error}</p>
+          <p className="mt-6 text-red-500">{error}</p>
         ) : (
           <>
-            {/* -------------------- POSTS TAB -------------------- */}
+            {/* Posts Tab */}
             {activeTab === "Posts" && !showPostsGrid && (
-              <>
-                <div className="post-tags">
+              <div className="mt-6">
+                <div className="mb-4 flex flex-wrap gap-2">
                   {postCategories.map((category) => (
                     <button
                       key={category}
-                      className={`tag-button ${
-                        activePostCategory === category ? "active" : ""
+                      className={`rounded-full px-4 py-2 text-sm transition ${
+                        activePostCategory === category
+                          ? "bg-green-600 text-white"
+                          : "bg-white/5 text-zinc-300 hover:bg-white/10"
                       }`}
                       onClick={() => setActivePostCategory(category)}
                     >
@@ -4743,60 +4734,41 @@ const ProfilePage = ({
                   ))}
                 </div>
 
-                {/* IMAGE GRID - UPDATED TO SMALLER SIZE */}
-                <div className="posts-images-view">
-                  <div className="images-grid" style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))",
-                    gap: "8px",
-                    width: "100%"
-                  }}>
-                    {filteredPosts.length > 0 ? (
-                      filteredPosts.map((post, index) => (
-                        <div
-                          key={post._id}
-                          className="post-image-item"
-                          onClick={() => handlePostImageClick(post)}
-                          style={{
-                            position: "relative",
-                            cursor: "pointer",
-                            aspectRatio: "1",
-                            overflow: "hidden"
-                          }}
-                        >
-                          <img
-                            src={post.imageUrl}
-                            className="post-image"
-                            style={{
-                              width: "100%",
-                              height: "100%",
-                              objectFit: "cover",
-                              display: "block"
-                            }}
-                            onError={(e) =>
-                              (e.currentTarget.src =
-                                `https://picsum.photos/400/400?random=${post._id}`)
-                            }
-                          />
-                        </div>
-                      ))
-                    ) : (
-                      <p className="no-posts">No posts yet.</p>
-                    )}
-                  </div>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+                  {filteredPosts.length > 0 ? (
+                    filteredPosts.map((post) => (
+                      <div
+                        key={post._id}
+                        onClick={() => handlePostImageClick(post)}
+                        className="group relative aspect-square cursor-pointer overflow-hidden rounded-xl bg-zinc-900"
+                      >
+                        <img
+                          src={post.imageUrl}
+                          className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
+                          onError={(e) =>
+                            (e.currentTarget.src = `https://picsum.photos/400/400?random=${post._id}`)
+                          }
+                        />
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-zinc-400">No posts yet.</p>
+                  )}
                 </div>
-              </>
+              </div>
             )}
 
-            {/* -------------------- PRODUCTS TAB -------------------- */}
+            {/* Products Tab */}
             {activeTab === "Products" && (
-              <>
-                <div className="product-tags">
+              <div className="mt-6">
+                <div className="mb-4 flex flex-wrap gap-2">
                   {productTags.map((tag) => (
                     <button
                       key={tag}
-                      className={`tag-button ${
-                        activeProductTag === tag ? "active" : ""
+                      className={`rounded-full px-4 py-2 text-sm transition ${
+                        activeProductTag === tag
+                          ? "bg-green-600 text-white"
+                          : "bg-white/5 text-zinc-300 hover:bg-white/10"
                       }`}
                       onClick={() => setActiveProductTag(tag)}
                     >
@@ -4805,64 +4777,120 @@ const ProfilePage = ({
                   ))}
                 </div>
 
-                <section className="content-grid">
-                 {filteredProducts.length > 0 ? (
-  filteredProducts.map((product) => (
-    <div key={product._id} className="grid-item product-item">
-      <a
-        href={product.productLink}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="product-link"
-      >
-        <div className="product-image-wrap">
-          <img
-            src={product.image?.url || product.imageUrl}
-            alt={product.name}
-            className="product-image"
-            onError={(e) =>
-              (e.currentTarget.src =
-                `https://picsum.photos/400/400?random=${product._id}`)
-            }
-          />
-        </div>
-      </a>
+                <section className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
+                  {filteredProducts.length > 0 ? (
+                    filteredProducts.map((product) => (
+                      <div
+                        key={product._id}
+                        className="overflow-hidden rounded-2xl border border-white/10 bg-white/5"
+                      >
+                        <a
+                          href={product.productLink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="block"
+                        >
+                          <div className="aspect-square overflow-hidden">
+                            <img
+                              src={product.image?.url || product.imageUrl}
+                              alt={product.name}
+                              className="h-full w-full object-cover transition duration-300 hover:scale-105"
+                              onError={(e) =>
+                                (e.currentTarget.src = `https://picsum.photos/400/400?random=${product._id}`)
+                              }
+                            />
+                          </div>
+                        </a>
 
-      {/* ⬇ Content BELOW image */}
-      <div className="product-info">
-        <p className="product-name">{product.name}</p>
-        <p className="product-price">₹{product.price}</p>
-      </div>
-    </div>
-  ))
-) : (
-  <p>No products yet.</p>
-)}
+                        <div className="p-3">
+                          <p className="truncate text-sm font-medium text-white">
+                            {product.name}
+                          </p>
+                          <p className="mt-1 text-sm text-green-400">
+                            ₹{product.price}
+                          </p>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-zinc-400">No products yet.</p>
+                  )}
                 </section>
-              </>
+              </div>
             )}
 
-            {/* -------------------- POST DETAIL WITH PRODUCTS GRID -------------------- */}
+            {/* AI Chat Tab */}
+            {activeTab === "AI Chat" && (
+              <section className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-4">
+                <div className="mb-4 border-b border-white/10 pb-3">
+                  <h3 className="text-lg font-semibold text-white">
+                    AI Chat with {company.name}
+                  </h3>
+                  <p className="text-sm text-zinc-400">
+                    Ask about products, services, posts, or company details.
+                  </p>
+                  {fetchingBot && (
+                    <p className="text-xs text-zinc-500 mt-1">Loading chatbot info...</p>
+                  )}
+                </div>
+
+                <div className="mb-4 flex h-[420px] flex-col gap-3 overflow-y-auto rounded-xl bg-black/30 p-4">
+                  {chatMessages.map((msg, index) => (
+                    <div
+                      key={index}
+                      className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm ${
+                        msg.role === "user"
+                          ? "ml-auto bg-green-600 text-white"
+                          : "mr-auto bg-zinc-800 text-zinc-100"
+                      }`}
+                    >
+                      {msg.text}
+                    </div>
+                  ))}
+
+                  {chatLoading && (
+                    <div className="mr-auto rounded-2xl bg-zinc-800 px-4 py-3 text-sm text-zinc-300">
+                      Typing...
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex gap-3">
+                  <input
+                    type="text"
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleSendChat()}
+                    placeholder={`Ask AI about ${company.name}...`}
+                    className="flex-1 rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white outline-none placeholder:text-zinc-500 focus:border-green-500"
+                  />
+                  <button
+                    onClick={handleSendChat}
+                    disabled={chatLoading || fetchingBot}
+                    className="rounded-xl bg-green-600 px-5 py-3 text-sm font-medium text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Send
+                  </button>
+                </div>
+              </section>
+            )}
+
+            {/* Post Detail */}
             {showPostsGrid && selectedPost && (
-              <div className="post-detail-with-products">
-                {/* Back Button */}
-                <div className="back-button-container">
-                  <button 
-                    className="back-button"
+              <div className="mt-6">
+                <div className="mb-4">
+                  <button
+                    className="rounded-lg bg-white/10 px-4 py-2 text-sm text-white hover:bg-white/15"
                     onClick={handleClosePostDetail}
                   >
                     ← Back to Posts
                   </button>
                 </div>
 
-                {/* Post Detail Section */}
-                <div
-                  className="post-detail-sections"
-                  style={{ width: "50%", margin: "0 auto" }}
-                >
+                <div className="mx-auto w-full max-w-3xl">
                   <PostGridItem
                     post={selectedPost}
-                    postIndex={posts.findIndex(p => p._id === selectedPost._id)}
+                    postIndex={posts.findIndex((p) => p._id === selectedPost._id)}
                     onSelectPost={() => {}}
                     onLike={handleLike}
                     onComment={handleComment}

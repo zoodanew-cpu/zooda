@@ -23,30 +23,47 @@ const AuthScreen = ({ isRegister, onAuthSuccess, switchMode }: AuthScreenProps) 
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+const handleAuthSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+  setAuthLoading(true);
 
-  const handleAuthSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setAuthLoading(true);
+  if (isRegister && formData.password !== formData.confirmPassword) {
+    onAuthSuccess("error", "Passwords do not match.");
+    setAuthLoading(false);
+    return;
+  }
 
-    if (isRegister && formData.password !== formData.confirmPassword) {
-      onAuthSuccess('error', 'Passwords do not match.');
-      setAuthLoading(false);
-      return;
+  try {
+    const payload = isRegister
+      ? formData
+      : { email: formData.email, password: formData.password };
+
+    const res = await axios.post(isRegister ? "/register" : "/login", payload);
+
+    // ✅ Save token and user
+    if (res.data.token) {
+      localStorage.setItem("token", res.data.token);
     }
 
-    try {
-      const payload = isRegister
-        ? formData
-        : { email: formData.email, password: formData.password };
-      const res = await axios.post(isRegister ? '/register' : '/login', payload);
-      onAuthSuccess('success', `Welcome, ${res.data.user.firstName}!`, res.data.token, res.data.user);
-    } catch (error: any) {
-      onAuthSuccess('error', error.response?.data?.message || 'Authentication failed');
-    } finally {
-      setAuthLoading(false);
+    if (res.data.user) {
+      localStorage.setItem("user", JSON.stringify(res.data.user));
     }
-  };
 
+    onAuthSuccess(
+      "success",
+      `Welcome, ${res.data.user.firstName}!`,
+      res.data.token,
+      res.data.user
+    );
+  } catch (error: any) {
+    onAuthSuccess(
+      "error",
+      error.response?.data?.message || "Authentication failed"
+    );
+  } finally {
+    setAuthLoading(false);
+  }
+};
   const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
 
