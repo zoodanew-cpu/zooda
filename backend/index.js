@@ -5,8 +5,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const cors = require('cors');
 const multer = require('multer');
-const botRoutes = require("./Routes/bot");
-const chatRoutes = require("./Routes/Chat");
+
 
 const path = require('path');
 const fs = require('fs');
