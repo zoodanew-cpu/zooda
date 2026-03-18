@@ -1,4 +1,3 @@
-// ChatbotSetup.tsx
 import React, {
   createContext,
   useContext,
@@ -182,7 +181,11 @@ export const useApp = () => {
 // ----------------------------------------------------------------------
 type ChatbotWizardProps = {
   businessId: string;
-  onComplete?: (botId: string) => void;
+  onComplete?: (botId: string) => void;  // Called when bot is ready
+  initialData?: {                         // Optional pre-filled data
+    businessName?: string;
+    websiteUrl?: string;
+  };
 };
 
 const MAX_PDFS = 2;
@@ -204,14 +207,14 @@ const isValidUrl = (value: string) => {
   }
 };
 
-export function ChatbotWizard({ businessId, onComplete }: ChatbotWizardProps) {
+export function ChatbotWizard({ businessId, onComplete, initialData }: ChatbotWizardProps) {
   const navigate = useNavigate();
   const { setupBot, fetchBotStatus } = useApp();
 
   // Local form state
   const [step, setStep] = useState(1);
-  const [name, setName] = useState("");
-  const [url, setUrl] = useState("");
+  const [name, setName] = useState(initialData?.businessName || "");
+  const [url, setUrl] = useState(initialData?.websiteUrl || "");
   const [pdfFiles, setPdfFiles] = useState<File[]>([]);
   const [localError, setLocalError] = useState("");
 
@@ -291,10 +294,7 @@ export function ChatbotWizard({ businessId, onComplete }: ChatbotWizardProps) {
     if (st.status === "ready") {
       stopPolling();
       setCompleted(true);
-      onComplete?.(botId!);
-      setTimeout(() => {
-        // optional redirect
-      }, 400);
+      onComplete?.(botId!); // Notify parent immediately (optional)
     } else if (st.status === "error") {
       stopPolling();
     }
@@ -359,6 +359,7 @@ export function ChatbotWizard({ businessId, onComplete }: ChatbotWizardProps) {
       });
       setBotId(newBotId);
       setBotStatus("processing");
+      setStep(4); // Move to processing step
     } catch (err: any) {
       setLocalError(err?.message || "Setup failed");
     }
@@ -423,7 +424,6 @@ export function ChatbotWizard({ businessId, onComplete }: ChatbotWizardProps) {
             </div>
           ))}
         </div>
-        {/* optional: back to dashboard button */}
       </div>
 
       <div className="flex-1 flex items-center justify-center p-8">
@@ -440,9 +440,12 @@ export function ChatbotWizard({ businessId, onComplete }: ChatbotWizardProps) {
                   <CheckCircle2 className="h-10 w-10 text-primary" />
                 </div>
                 <h2 className="text-2xl font-bold mb-2">Knowledge Ready ✅</h2>
-                <p className="text-muted-foreground">
+                <p className="text-muted-foreground mb-6">
                   Your chatbot is now live on your business profile.
                 </p>
+                <Button onClick={() => onComplete?.(botId!)} className="w-full">
+                  Start Chatting <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
               </motion.div>
             ) : (
               <motion.div
@@ -471,7 +474,7 @@ export function ChatbotWizard({ businessId, onComplete }: ChatbotWizardProps) {
                     <input
                       value={name}
                       onChange={(e) => setName(e.target.value)}
-                      placeholder="e.g. Infipara Pvt Ltd"
+                      placeholder="e.g. Acme Inc"
                       className="w-full bg-muted rounded-xl px-4 py-3 text-sm outline-none focus:ring-1 focus:ring-primary/50"
                     />
                     <Button

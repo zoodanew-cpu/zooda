@@ -7,6 +7,7 @@ import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import CreateBusinessForm from "./components/business/CreateBussinessForm";
 import { AppProvider } from "@/components/Chat/Chatbot";
+import { BusinessChatHistory } from "./components/Chat/Chatinterface";
 
 const queryClient = new QueryClient();
 
@@ -20,6 +21,7 @@ const App = () => (
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/create-business" element={<CreateBusinessForm />} />
+            <Route path="/chat" element={<BusinessChatHistory />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AppProvider>

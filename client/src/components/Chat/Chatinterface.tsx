@@ -1,256 +1,259 @@
-// ChatInterface.tsx
-import React, { useState, useRef, useEffect } from "react";
-import { useApp } from "./Chatbot";
-import { Send, Bot, User, ArrowLeft } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
-import axios from "axios";
+import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { motion } from "framer-motion";
+import {
+  Bot,
+  User,
+  MessageSquare,
+  Calendar,
+  ChevronRight,
+  Loader2,
+  AlertCircle,
+} from "lucide-react";
+import api from "@/lib/api";
+import { cn } from "@/lib/utils"; // adjust import path
+
+interface ChatUser {
+  _id: string;
+  name: string;
+  email: string;
+  avatar?: string;
+  lastMessage: string;
+  lastMessageTime: string;
+  messageCount: number;
+}
 
 interface Message {
-  id: string;
-  role: "user" | "bot";
+  role: "user" | "ai";
   text: string;
-  timestamp: Date;
+  timestamp: string;
 }
 
-interface ChatInterfaceProps {
-  botId: string;
-  companyName: string;
-  userId?: string; // optional – if user is logged in
-  onBack?: () => void;
+interface Conversation {
+  userId: string;
+  messages: Message[];
 }
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || "https://api.zooda.in";
+export const BusinessChatHistory: React.FC = () => {
+  const navigate = useNavigate();
+  const [users, setUsers] = useState<ChatUser[]>([]);
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const [conversation, setConversation] = useState<Message[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadingConversation, setLoadingConversation] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-export const ChatInterface: React.FC<ChatInterfaceProps> = ({
-  botId,
-  companyName,
-  userId,
-  onBack,
-}) => {
-  const { askBot } = useApp();
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [initialLoading, setInitialLoading] = useState(true);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  // Generate a session ID for anonymous users (stored in localStorage)
-  const [sessionId] = useState(() => {
-    if (userId) return null; // logged in users don't need sessionId
-    let sid = localStorage.getItem(`chat_session_${botId}`);
-    if (!sid) {
-      sid = Math.random().toString(36).substring(2) + Date.now().toString(36);
-      localStorage.setItem(`chat_session_${botId}`, sid);
-    }
-    return sid;
-  });
-
-  // Load previous messages from backend
+  // Fetch list of users who have chatted with this business
   useEffect(() => {
-    const loadHistory = async () => {
+    const fetchChatUsers = async () => {
       try {
-        setInitialLoading(true);
-        const params = new URLSearchParams();
-        if (userId) params.append("userId", userId);
-        else if (sessionId) params.append("sessionId", sessionId);
-        const res = await axios.get(`${API_BASE_URL}/api/chat/history/${botId}?${params}`);
+        setLoading(true);
+        const res = await api.get("/chat/business/users"); // new endpoint
         if (res.data.success) {
-          const history = res.data.messages.map((msg: any) => ({
-            id: msg._id,
-            role: msg.role,
-            text: msg.message,
-            timestamp: new Date(msg.createdAt),
-          }));
-          setMessages(history);
+          setUsers(res.data.users);
+          if (res.data.users.length > 0) {
+            setSelectedUserId(res.data.users[0]._id);
+          }
         } else {
-          // fallback to welcome message
-          setMessages([{
-            id: "welcome",
-            role: "bot",
-            text: `Hi! Ask anything about ${companyName}, products, or posts.`,
-            timestamp: new Date(),
-          }]);
+          setError("Failed to load chat users");
         }
-      } catch (error) {
-        console.error("Failed to load chat history:", error);
-        setMessages([{
-          id: "welcome",
-          role: "bot",
-          text: `Hi! Ask anything about ${companyName}, products, or posts.`,
-          timestamp: new Date(),
-        }]);
+      } catch (err: any) {
+        setError(err.response?.data?.message || "Error loading chats");
       } finally {
-        setInitialLoading(false);
+        setLoading(false);
       }
     };
-    loadHistory();
-  }, [botId, userId, sessionId, companyName]);
+    fetchChatUsers();
+  }, []);
 
-  // Auto-scroll
+  // Fetch conversation for selected user
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    if (!selectedUserId) return;
 
-  // Save a message to backend
-  const saveMessage = async (role: "user" | "bot", message: string) => {
-    try {
-      await axios.post(`${API_BASE_URL}/api/chat/message`, {
-        botId,
-        userId: userId || null,
-        sessionId: userId ? null : sessionId,
-        role,
-        message,
-      });
-    } catch (err) {
-      console.error("Failed to save message:", err);
-    }
-  };
-
-  const handleSend = async () => {
-    if (!input.trim() || loading) return;
-
-    const userMessageText = input;
-    setInput("");
-    setLoading(true);
-
-    // Optimistically add user message
-    const tempUserMessage: Message = {
-      id: `temp-${Date.now()}`,
-      role: "user",
-      text: userMessageText,
-      timestamp: new Date(),
+    const fetchConversation = async () => {
+      setLoadingConversation(true);
+      try {
+        const res = await api.get(
+          `/chat/business/conversation/${selectedUserId}`
+        );
+        if (res.data.success) {
+          setConversation(res.data.messages);
+        } else {
+          setConversation([]);
+        }
+      } catch (err) {
+        console.error("Failed to load conversation", err);
+        setConversation([]);
+      } finally {
+        setLoadingConversation(false);
+      }
     };
-    setMessages((prev) => [...prev, tempUserMessage]);
+    fetchConversation();
+  }, [selectedUserId]);
 
-    // Save user message to backend (don't wait)
-    saveMessage("user", userMessageText);
-
-    try {
-      const { answer } = await askBot({ botId, question: userMessageText });
-      const botMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: "bot",
-        text: answer,
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, botMessage]);
-      saveMessage("bot", answer);
-    } catch (error) {
-      console.error("Chat error:", error);
-      const errorMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: "bot",
-        text: "Sorry, something went wrong. Please try again later.",
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, errorMessage]);
-    } finally {
-      setLoading(false);
-      inputRef.current?.focus();
-    }
+  const formatDate = (timestamp: string) => {
+    const date = new Date(timestamp);
+    return date.toLocaleString();
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
-  };
-
-  if (initialLoading) {
+  if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen bg-black">
-        <div className="text-white">Loading conversation...</div>
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen">
+        <AlertCircle className="h-12 w-12 text-destructive mb-4" />
+        <p className="text-destructive">{error}</p>
+        <button
+          onClick={() => window.location.reload()}
+          className="mt-4 btn-primary"
+        >
+          Retry
+        </button>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col h-screen bg-black text-white">
-      {/* Header */}
-      <header className="flex items-center gap-3 p-4 border-b border-white/10 bg-white/5">
-        {onBack && (
+    <div className="min-h-screen bg-background">
+      <div className="max-w-7xl mx-auto px-4 py-8">
+        <div className="mb-6 flex items-center justify-between">
+          <h1 className="text-2xl font-bold gradient-text flex items-center gap-2">
+            <MessageSquare className="h-6 w-6" />
+            Chat History
+          </h1>
           <button
-            onClick={onBack}
-            className="p-2 rounded-full hover:bg-white/10 transition"
+            onClick={() => navigate(-1)}
+            className="text-sm text-muted-foreground hover:text-foreground"
           >
-            <ArrowLeft size={20} />
+            ← Back
           </button>
-        )}
-        <div className="w-10 h-10 rounded-full bg-green-600/20 flex items-center justify-center">
-          <Bot className="text-green-500" size={20} />
         </div>
-        <div>
-          <h2 className="font-semibold">{companyName} AI</h2>
-          <p className="text-xs text-zinc-400">Online</p>
-        </div>
-      </header>
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        <AnimatePresence>
-          {messages.map((msg) => (
-            <motion.div
-              key={msg.id}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-              className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-            >
-              <div
-                className={`max-w-[80%] rounded-2xl px-4 py-2 text-sm ${
-                  msg.role === "user"
-                    ? "bg-green-600 text-white rounded-br-none"
-                    : "bg-zinc-800 text-zinc-100 rounded-bl-none"
-                }`}
-              >
-                <p className="whitespace-pre-wrap break-words">{msg.text}</p>
-                <p className="text-[10px] opacity-60 mt-1 text-right">
-                  {msg.timestamp.toLocaleTimeString([], {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
-                </p>
+        {users.length === 0 ? (
+          <div className="text-center py-12">
+            <Bot className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
+            <h2 className="text-xl font-semibold mb-2">No conversations yet</h2>
+            <p className="text-muted-foreground">
+              When users start chatting with your AI bot, they'll appear here.
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* User list sidebar */}
+            <div className="md:col-span-1 border border-border rounded-2xl bg-card/30 overflow-hidden">
+              <div className="p-4 border-b border-border">
+                <h2 className="font-semibold">Users ({users.length})</h2>
               </div>
-            </motion.div>
-          ))}
-        </AnimatePresence>
-        {loading && (
-          <div className="flex justify-start">
-            <div className="bg-zinc-800 rounded-2xl rounded-bl-none px-4 py-2">
-              <div className="flex gap-1">
-                <span className="w-2 h-2 bg-zinc-500 rounded-full animate-bounce" />
-                <span className="w-2 h-2 bg-zinc-500 rounded-full animate-bounce delay-100" />
-                <span className="w-2 h-2 bg-zinc-500 rounded-full animate-bounce delay-200" />
+              <div className="divide-y divide-border max-h-[600px] overflow-y-auto">
+                {users.map((user) => (
+                  <button
+                    key={user._id}
+                    onClick={() => setSelectedUserId(user._id)}
+                    className={cn(
+                      "w-full p-4 text-left hover:bg-muted/50 transition-colors",
+                      selectedUserId === user._id && "bg-muted"
+                    )}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                        {user.avatar ? (
+                          <img
+                            src={user.avatar}
+                            alt={user.name}
+                            className="h-10 w-10 rounded-full object-cover"
+                          />
+                        ) : (
+                          <User className="h-5 w-5 text-primary" />
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex justify-between items-baseline">
+                          <p className="font-medium truncate">{user.name}</p>
+                          <span className="text-xs text-muted-foreground">
+                            {new Date(user.lastMessageTime).toLocaleDateString()}
+                          </span>
+                        </div>
+                        <p className="text-sm text-muted-foreground truncate mt-1">
+                          {user.lastMessage}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {user.messageCount} messages
+                        </p>
+                      </div>
+                    </div>
+                  </button>
+                ))}
               </div>
+            </div>
+
+            {/* Conversation panel */}
+            <div className="md:col-span-2 border border-border rounded-2xl bg-card/30 flex flex-col">
+              {selectedUserId ? (
+                <>
+                  <div className="p-4 border-b border-border">
+                    <h2 className="font-semibold">
+                      Conversation with{" "}
+                      {users.find((u) => u._id === selectedUserId)?.name}
+                    </h2>
+                  </div>
+                  <div className="flex-1 p-4 space-y-4 max-h-[600px] overflow-y-auto">
+                    {loadingConversation ? (
+                      <div className="flex justify-center py-8">
+                        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                      </div>
+                    ) : conversation.length === 0 ? (
+                      <p className="text-center text-muted-foreground py-8">
+                        No messages in this conversation.
+                      </p>
+                    ) : (
+                      conversation.map((msg, idx) => (
+                        <div
+                          key={idx}
+                          className={cn(
+                            "flex",
+                            msg.role === "user" ? "justify-end" : "justify-start"
+                          )}
+                        >
+                          <div
+                            className={cn(
+                              "max-w-[70%] rounded-2xl px-4 py-3 text-sm",
+                              msg.role === "user"
+                                ? "bg-primary text-white"
+                                : "bg-muted text-foreground"
+                            )}
+                          >
+                            <p className="whitespace-pre-wrap">{msg.text}</p>
+                            <div
+                              className={cn(
+                                "text-xs mt-1 flex items-center gap-1",
+                                msg.role === "user"
+                                  ? "text-primary-foreground/70"
+                                  : "text-muted-foreground"
+                              )}
+                            >
+                              <Calendar className="h-3 w-3" />
+                              {formatDate(msg.timestamp)}
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </>
+              ) : (
+                <div className="flex items-center justify-center h-full py-12">
+                  <p className="text-muted-foreground">Select a user to view chat</p>
+                </div>
+              )}
             </div>
           </div>
         )}
-        <div ref={messagesEndRef} />
-      </div>
-
-      {/* Input */}
-      <div className="p-4 border-t border-white/10 bg-white/5">
-        <div className="flex gap-2">
-          <input
-            ref={inputRef}
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Ask something..."
-            className="flex-1 bg-black/30 border border-white/10 rounded-full px-4 py-3 text-sm text-white outline-none focus:border-green-500 transition"
-            disabled={loading}
-          />
-          <button
-            onClick={handleSend}
-            disabled={loading || !input.trim()}
-            className="w-12 h-12 rounded-full bg-green-600 text-white flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed hover:bg-green-700 transition"
-          >
-            <Send size={18} />
-          </button>
-        </div>
       </div>
     </div>
   );

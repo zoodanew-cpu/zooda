@@ -5,7 +5,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const cors = require('cors');
 const multer = require('multer');
-
+const chatRoutes = require('./Routes/Chat');
 
 const path = require('path');
 const fs = require('fs');
@@ -15,6 +15,7 @@ const Bot = require("./models/Bot");
 const { ingestBot } = require("./services/ingest");
 const { embedText,cosineSim } = require("./lib/embeddings");
 const Chunk = require("./models/Chunk");
+const ChatMessage = require("./models/ChatMessage");
 
 require('dotenv').config();
 const app = express();
@@ -477,28 +478,23 @@ const categorySchema = new mongoose.Schema({
   timestamps: true
 });
 const Category = mongoose.model('Category', categorySchema);
-
-const authMiddleware = (req, res, next) => {
-  const token = req.header("Authorization")?.replace("Bearer ", "");
-
-  if (!token) {
-    return res.status(401).json({ message: "No token, authorization denied" });
-  }
-
+const authMiddleware = async (req, res, next) => {
   try {
-    const secret = process.env.JWT_SECRET || "BANNU9";
-
-    const decoded = jwt.verify(token, secret);
-
-    req.user = decoded;
-
+    const token = req.header('Authorization')?.replace('Bearer ', '');
+    if (!token) {
+      return res.status(401).json({ success: false, message: 'No token, authorization denied' });
+    }
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    // Use User, not Client
+    const user = await User.findById(decoded.id).select('-password');
+    if (!user) {
+      return res.status(401).json({ success: false, message: 'User not found' });
+    }
+    req.user = user;
     next();
   } catch (err) {
-    console.error("JWT Verification Error:", err.message);
-
-    return res.status(401).json({
-      message: "Token is not valid or expired",
-    });
+    console.error('Auth error:', err.message);
+    res.status(401).json({ success: false, message: 'Token is not valid' });
   }
 };
 const generateToken = (user) => {
@@ -521,6 +517,42 @@ const getUserBusiness = async (userId) => {
     return null; 
   }
 };
+const auth = async (req, res, next) => {
+  try {
+    // Get token from header
+    const token = req.header('Authorization')?.replace('Bearer ', '');
+    if (!token) {
+      return res.status(401).json({ 
+        success: false, 
+        message: 'No token, authorization denied' 
+      });
+    }
+
+    // Verify token – use environment variable if available, fallback to hardcoded
+    const secret = process.env.JWT_SECRET || 'BANNU9';
+    const decoded = jwt.verify(token, secret);
+
+    // Find user by id from token
+    const user = await Client.findById(decoded.id).select('-password');
+    if (!user) {
+      return res.status(401).json({ 
+        success: false, 
+        message: 'User not found' 
+      });
+    }
+
+    // Attach user to request
+    req.user = user;
+    next();
+  } catch (err) {
+    console.error('Auth error:', err.message);
+    res.status(401).json({ 
+      success: false, 
+      message: 'Token is not valid' 
+    });
+  }
+};
+
 
 app.post('/api/register', async (req, res) => {
   try {
@@ -547,8 +579,7 @@ app.post('/api/register', async (req, res) => {
     });
 
     if (user) {
-      const token = generateToken(user._id);
-      
+  const token = generateToken(user);      
       res.status(201).json({
         success: true,
         token,
@@ -579,7 +610,7 @@ app.post('/api/login', async (req, res) => {
     const user = await User.findOne({ email }).select('+password');
     
     if (user && (await user.matchPassword(password))) {
-      const token = generateToken(user._id);
+      const token = generateToken(user);
       
       res.json({
         success: true,
@@ -1312,28 +1343,20 @@ app.put("/api/business/:businessId", authMiddleware, upload.single("media"), asy
   try {
     const businessId = req.params.businessId;
     
-    // Validate business ID
     if (!businessId) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "Business ID is required" 
-      });
+      return res.status(400).json({ success: false, message: "Business ID is required" });
     }
 
-    // Check if business exists and user owns it
+    // Check ownership
     const business = await Business.findOne({
       _id: businessId,
-      user: req.user.id // Ensure user owns the business
+      user: req.user.id
     });
 
     if (!business) {
-      return res.status(404).json({ 
-        success: false, 
-        message: "Business not found or unauthorized" 
-      });
+      return res.status(404).json({ success: false, message: "Business not found or unauthorized" });
     }
 
-    // Extract fields from request body
     const {
       businessName,
       businessCategory,
@@ -1341,150 +1364,118 @@ app.put("/api/business/:businessId", authMiddleware, upload.single("media"), asy
       businessWebsite,
       businessAddress,
       businessPhone,
+      removeLogo // new flag – set to "true" to delete current logo
     } = req.body;
-
-    // Validate required fields if they're being updated
-    if (businessName !== undefined) {
-      if (!businessName || businessName.trim() === "") {
-        return res.status(400).json({ 
-          success: false, 
-          message: "Business name is required" 
-        });
-      }
-      
-      // Validate business name length
-      if (businessName.length < 2 || businessName.length > 100) {
-        return res.status(400).json({ 
-          success: false, 
-          message: "Business name must be between 2 and 100 characters" 
-        });
-      }
-
-      // Check for duplicate business name (excluding current business)
-      const duplicateBusiness = await Business.findOne({
-        businessName: new RegExp(`^${businessName.trim()}$`, "i"),
-        _id: { $ne: businessId } // Exclude current business
-      });
-      
-      if (duplicateBusiness) {
-        return res.status(400).json({ 
-          success: false, 
-          message: "A business with this name already exists" 
-        });
-      }
-    }
-
-    // Validate business description if being updated
-    if (businessDescription !== undefined) {
-      if (!businessDescription || businessDescription.trim() === "") {
-        return res.status(400).json({ 
-          success: false, 
-          message: "Business description is required" 
-        });
-      }
-      
-      if (businessDescription.length < 10 || businessDescription.length > 500) {
-        return res.status(400).json({ 
-          success: false, 
-          message: "Business description must be between 10 and 500 characters" 
-        });
-      }
-    }
-
-    // Validate business address if being updated
-    if (businessAddress !== undefined) {
-      if (!businessAddress || businessAddress.trim() === "") {
-        return res.status(400).json({ 
-          success: false, 
-          message: "Business address is required" 
-        });
-      }
-      
-      if (businessAddress.length > 200) {
-        return res.status(400).json({ 
-          success: false, 
-          message: "Business address must be less than 200 characters" 
-        });
-      }
-    }
-
-    // Validate business category if being updated
-    if (businessCategory !== undefined) {
-      if (!businessCategory || businessCategory.trim() === "") {
-        return res.status(400).json({ 
-          success: false, 
-          message: "Business category is required" 
-        });
-      }
-    }
-
-    // Validate phone number if being updated
-    if (businessPhone !== undefined) {
-      if (!businessPhone || businessPhone.trim() === "") {
-        return res.status(400).json({ 
-          success: false, 
-          message: "Phone number is required" 
-        });
-      }
-      
-      const phoneRegex = /^[\+]?[1-9][\d]{0,15}$/;
-      const cleanPhone = businessPhone.replace(/[\s\-\(\)]/g, "");
-      if (!phoneRegex.test(cleanPhone)) {
-        return res.status(400).json({ 
-          success: false, 
-          message: "Please enter a valid phone number" 
-        });
-      }
-    }
-
-    // Validate website if being updated
-    if (businessWebsite !== undefined && businessWebsite.trim() !== "") {
-      try {
-        new URL(businessWebsite);
-      } catch (error) {
-        return res.status(400).json({ 
-          success: false, 
-          message: "Please enter a valid website URL" 
-        });
-      }
-    }
 
     // Prepare update data
     const updateData = {};
 
-    // Only include fields that are provided (not undefined)
-    if (businessName !== undefined) updateData.businessName = businessName.trim();
-    if (businessCategory !== undefined) updateData.businessCategory = businessCategory;
-    if (businessDescription !== undefined) updateData.businessDescription = businessDescription.trim();
-    if (businessAddress !== undefined) updateData.businessAddress = businessAddress.trim();
-    
+    // Validate and assign fields (only if provided)
+    if (businessName !== undefined) {
+      const trimmed = businessName.trim();
+      if (!trimmed) {
+        return res.status(400).json({ success: false, message: "Business name is required" });
+      }
+      if (trimmed.length < 2 || trimmed.length > 100) {
+        return res.status(400).json({ success: false, message: "Business name must be between 2 and 100 characters" });
+      }
+
+      // Case‑insensitive duplicate check (exclude current business)
+      const duplicate = await Business.findOne({
+        businessName: { $regex: new RegExp(`^${trimmed}$`, "i") },
+        _id: { $ne: businessId }
+      });
+      if (duplicate) {
+        return res.status(400).json({ success: false, message: "A business with this name already exists" });
+      }
+      updateData.businessName = trimmed;
+    }
+
+    if (businessCategory !== undefined) {
+      if (!businessCategory.trim()) {
+        return res.status(400).json({ success: false, message: "Business category is required" });
+      }
+      updateData.businessCategory = businessCategory;
+    }
+
+    if (businessDescription !== undefined) {
+      const trimmed = businessDescription.trim();
+      if (!trimmed) {
+        return res.status(400).json({ success: false, message: "Business description is required" });
+      }
+      if (trimmed.length < 10 || trimmed.length > 500) {
+        return res.status(400).json({ success: false, message: "Business description must be between 10 and 500 characters" });
+      }
+      updateData.businessDescription = trimmed;
+    }
+
+    if (businessAddress !== undefined) {
+      const trimmed = businessAddress.trim();
+      if (!trimmed) {
+        return res.status(400).json({ success: false, message: "Business address is required" });
+      }
+      if (trimmed.length > 200) {
+        return res.status(400).json({ success: false, message: "Business address must be less than 200 characters" });
+      }
+      updateData.businessAddress = trimmed;
+    }
+
     if (businessPhone !== undefined) {
-      updateData.businessPhone = businessPhone.replace(/[\s\-\(\)]/g, "");
+      const trimmed = businessPhone.replace(/[\s\-\(\)]/g, "");
+      if (!trimmed) {
+        return res.status(400).json({ success: false, message: "Phone number is required" });
+      }
+      const phoneRegex = /^[\+]?[1-9][\d]{0,15}$/;
+      if (!phoneRegex.test(trimmed)) {
+        return res.status(400).json({ success: false, message: "Please enter a valid phone number" });
+      }
+      updateData.businessPhone = trimmed;
     }
-    
+
     if (businessWebsite !== undefined) {
-      updateData.businessWebsite = businessWebsite.trim() !== "" ? businessWebsite.trim() : null;
+      const trimmed = businessWebsite.trim();
+      if (trimmed === "") {
+        updateData.businessWebsite = null; // explicitly remove website
+      } else {
+        try {
+          new URL(trimmed);
+          updateData.businessWebsite = trimmed;
+        } catch (error) {
+          return res.status(400).json({ success: false, message: "Please enter a valid website URL" });
+        }
+      }
     }
 
-    // ✅ Handle file upload - if new file is uploaded, update logoUrl
+    // Handle logo upload / removal
     if (req.file && req.file.path) {
+      // New logo uploaded – delete old one from Cloudinary if exists
+      if (business.logoUrl) {
+        const publicId = extractPublicIdFromUrl(business.logoUrl); // implement based on your URL structure
+        if (publicId) {
+          await cloudinary.uploader.destroy(publicId);
+        }
+      }
       updateData.logoUrl = req.file.path; // Cloudinary URL
-      
-      // Optional: Delete old logo from Cloudinary if exists
-      // You might want to implement this based on your storage logic
+    } else if (removeLogo === "true" || removeLogo === true) {
+      // Explicit request to remove logo
+      if (business.logoUrl) {
+        const publicId = extractPublicIdFromUrl(business.logoUrl);
+        if (publicId) {
+          await cloudinary.uploader.destroy(publicId);
+        }
+      }
+      updateData.logoUrl = null;
     }
+    // If no file and no remove flag, logoUrl remains unchanged
 
-    // Update the business
+    // Apply update
     const updatedBusiness = await Business.findByIdAndUpdate(
       businessId,
       { $set: updateData },
-      { 
-        new: true, // Return the updated document
-        runValidators: true // Run model validators
-      }
+      { new: true, runValidators: true }
     ).populate("user", "firstName lastName email avatar");
 
-    // ✅ Update user role to business_owner if not already (for consistency)
+    // Ensure user role is business_owner
     const user = await User.findById(req.user.id);
     if (user.role !== "business_owner" || !user.hasBusiness) {
       await User.findByIdAndUpdate(req.user.id, {
@@ -1502,30 +1493,17 @@ app.put("/api/business/:businessId", authMiddleware, upload.single("media"), asy
   } catch (error) {
     console.error("Update business error:", error);
 
-    // Handle Mongoose validation errors
     if (error.name === "ValidationError") {
       const errors = Object.values(error.errors).map((err) => err.message);
-      return res.status(400).json({
-        success: false,
-        message: "Validation failed",
-        errors,
-      });
+      return res.status(400).json({ success: false, message: "Validation failed", errors });
     }
 
-    // Handle duplicate key error
     if (error.code === 11000) {
-      return res.status(400).json({
-        success: false,
-        message: "Business with this name already exists",
-      });
+      return res.status(400).json({ success: false, message: "Business with this name already exists" });
     }
 
-    // Handle cast error (invalid ID)
     if (error.name === "CastError") {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid business ID",
-      });
+      return res.status(400).json({ success: false, message: "Invalid business ID" });
     }
 
     res.status(500).json({
@@ -1535,7 +1513,13 @@ app.put("/api/business/:businessId", authMiddleware, upload.single("media"), asy
     });
   }
 });
-app.post("/api/posts", authMiddleware, upload.single("media"), async (req, res) => {
+
+// Helper function to extract Cloudinary public ID from URL
+function extractPublicIdFromUrl(url) {
+  // Example: https://res.cloudinary.com/demo/image/upload/v12345/folder/public_id.jpg
+  const matches = url.match(/\/upload\/(?:v\d+\/)?(.+?)(?:\.[^.]+)?$/);
+  return matches ? matches[1] : null;
+}app.post("/api/posts", authMiddleware, upload.single("media"), async (req, res) => {
   try {
     const { content, platforms, scheduledFor, tags, category, caption } = req.body;
 
@@ -4566,95 +4550,146 @@ app.get("/api/bot/:botId/status", async (req, res) => {
     return res.status(500).json({ success: false, message: err.message || "Server error" });
   }
 });
-const MIN_SCORE = Number(process.env.CHAT_MIN_SCORE || 0.30); // ✅ better default
+const MIN_SCORE = Number(process.env.CHAT_MIN_SCORE || 0.30);
 
-app.post("/api/chat", async (req, res) => {
+app.post('/api/chat', auth, async (req, res) => {
   try {
-    const { botId, question } = req.body;
-
-    if (!botId || !question) {
-      return res
-        .status(400)
-        .json({ success: false, message: "botId and question are required" });
+    // ✅ Ensure user is attached
+    if (!req.user || !req.user._id) {
+      return res.status(401).json({ success: false, message: 'Unauthorized: user not found' });
     }
 
+    const { botId, question, businessId } = req.body;
+    const userId = req.user._id; // ✅ use _id
+
+    if (!botId || !question || !businessId) {
+      return res.status(400).json({
+        success: false,
+        message: 'botId, question, and businessId are required'
+      });
+    }
+
+    // Save user message
+    const userMessage = new ChatMessage({
+      user: userId,
+      business: businessId,
+      role: 'user',
+      text: question,
+    });
+    await userMessage.save();
+
+    // Fetch bot
     const bot = await Bot.findById(botId).lean();
     if (!bot) {
-      return res.status(404).json({ success: false, message: "Bot not found" });
-    }
-
-    // ✅ If ready but chunksCount 0, show correct reason
-    if (bot.status === "ready" && (bot.chunksCount || 0) === 0) {
-      return res.json({
-        success: true,
-        answer:
-          "Your bot is marked ready, but no content was extracted (0 chunks). Please re-ingest with a valid website and/or PDFs. If you uploaded PDFs, check the server logs for PDF parsing issues.",
-        sources: [],
+      const aiMessage = new ChatMessage({
+        user: userId,
+        business: businessId,
+        role: 'ai',
+        text: 'Bot not found.'
       });
+      await aiMessage.save();
+      return res.status(404).json({ success: false, message: 'Bot not found' });
     }
 
-    if (bot.status !== "ready") {
-      return res.json({
-        success: true,
-        answer:
-          bot.status === "error"
-            ? `Knowledge base error: ${bot.error || "Unknown error"}`
-            : "Your knowledge base is still processing. Please try again in a moment.",
-        sources: [],
+    // Helper to send answer and save AI message
+    const sendAnswer = async (answer, sources = []) => {
+      const aiMessage = new ChatMessage({
+        user: userId,
+        business: businessId,
+        role: 'ai',
+        text: answer,
       });
+      await aiMessage.save();
+      return res.json({ success: true, answer, sources });
+    };
+
+    // Bot status checks
+    if (bot.status === 'ready' && (bot.chunksCount || 0) === 0) {
+      return sendAnswer(
+        'Your bot is marked ready, but no content was extracted (0 chunks). Please re-ingest with a valid website and/or PDFs.',
+        []
+      );
     }
 
+    if (bot.status !== 'ready') {
+      const answer = bot.status === 'error'
+        ? `Knowledge base error: ${bot.error || 'Unknown error'}`
+        : 'Your knowledge base is still processing. Please try again in a moment.';
+      return sendAnswer(answer, []);
+    }
+
+    // Embed question
     const qVec = await embedText(question);
 
-    // ✅ only fetch needed fields
+    // Fetch chunks
     const candidates = await Chunk.find({ botId })
-      .select("text sourceType source meta embedding")
+      .select('text sourceType source meta embedding')
       .lean();
 
     if (!candidates.length) {
-      return res.json({
-        success: true,
-        answer:
-          "No knowledge is available yet. Please add your website and PDFs, then wait for processing to finish.",
-        sources: [],
-      });
+      return sendAnswer(
+        'No knowledge is available yet. Please add your website and PDFs, then wait for processing to finish.',
+        []
+      );
     }
 
+    // Score and rank
     const scored = candidates
       .map((c) => ({ ...c, score: cosineSim(qVec, c.embedding) }))
       .sort((a, b) => b.score - a.score)
       .slice(0, 6);
 
     const best = scored[0];
-
     if (!best || best.score < MIN_SCORE) {
-      return res.json({
-        success: true,
-        answer:
-          "I couldn’t find this information in your uploaded PDFs or website content. Please upload a relevant document or add this information to your website.",
-        sources: [],
-      });
+      return sendAnswer(
+        'I couldn’t find this information in your uploaded PDFs or website content. Please upload a relevant document or add this information to your website.',
+        []
+      );
     }
 
-    // ✅ better answer: combine top 2-3 chunks (more useful than returning only one chunk)
     const take = scored.filter((s) => s.score >= MIN_SCORE).slice(0, 3);
-    const answer = take.map((x) => x.text).join("\n\n");
+    const answer = take.map((x) => x.text).join('\n\n');
 
     const sources = scored.map((s) => ({
       type: s.sourceType,
       source: s.source,
       meta: s.meta,
       score: Number(s.score.toFixed(3)),
-      snippet: s.text.slice(0, 220) + (s.text.length > 220 ? "…" : ""),
+      snippet: s.text.slice(0, 220) + (s.text.length > 220 ? '…' : ''),
     }));
 
-    return res.json({ success: true, answer, sources });
+    return sendAnswer(answer, sources);
   } catch (err) {
-    return res
-      .status(500)
-      .json({ success: false, message: err.message || "Server error" });
+    console.error('Chat error:', err);
+    return res.status(500).json({ success: false, message: err.message || 'Server error' });
   }
 });
+
+// ---------- Chat History Route (GET) ----------
+app.get('/api/chat/history', auth, async (req, res) => {
+  try {
+    if (!req.user || !req.user._id) {
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
+    }
+
+    const { businessId } = req.query;
+    const userId = req.user._id;
+
+    if (!businessId) {
+      return res.status(400).json({ success: false, message: 'businessId is required' });
+    }
+
+    const messages = await ChatMessage.find({ user: userId, business: businessId })
+      .sort({ timestamp: 1 })
+      .select('role text timestamp -_id');
+
+    res.json({ success: true, messages });
+  } catch (err) {
+    console.error('History fetch error:', err);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
 app.get("/api/business/:id", async (req, res) => {
   try {
     const business = await Business.findById(req.params.id);

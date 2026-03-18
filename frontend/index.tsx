@@ -147,26 +147,7 @@ interface Promotion {
 const API_BASE_URL = "https://api.zooda.in";
 import { Sparkles } from "lucide-react";
 
-type FloatingBotButtonProps = {
-  onClick: () => void;
-};
 
-const FloatingBotButton = () => {
-  return (
-    <a
-      href="https://ai.zooda.in"
-      className="ai-bot-float"
-      aria-label="Open AI Bot"
-      title="Open AI Bot"
-    >
-      <span className="ai-bot-glow"></span>
-      <div className="ai-bot-inner">
-        <Sparkles size={18} />
-        <span>AI Bot</span>
-      </div>
-    </a>
-  );
-};
 
 const getActivePromotions = async (): Promise<Promotion[]> => {
   try {
@@ -3342,6 +3323,27 @@ const AllPostsPage = ({ onSelectPost, user, onLoginRequest }: AllPostsPageProps)
           </div>
         </div>
 
+        {/* Green theme override for login prompt */}
+        <style>{`
+          .login-prompt h2 {
+            color: #2e7d32; /* dark green */
+          }
+          .login-prompt .login-btn-primary {
+            background-color: #4caf50; /* green */
+            border-color: #388e3c;
+            color: white;
+          }
+          .login-prompt .login-btn-primary:hover {
+            background-color: #388e3c; /* darker green */
+          }
+          .login-prompt .feature .material-icons {
+            color: #4caf50; /* green */
+          }
+          .login-prompt .feature span:last-child {
+            color: #1b5e20; /* dark green text */
+          }
+        `}</style>
+
         <LoginModal
           isOpen={showLoginModal}
           onClose={() => setShowLoginModal(false)}
@@ -4284,6 +4286,7 @@ interface ProfilePageProps {
   user?: User;
   onLoginRequest?: () => void;
 }
+
 export const ProfilePage = ({
   company,
   onSelectPost,
@@ -4291,9 +4294,7 @@ export const ProfilePage = ({
   onLoginRequest,
 }: ProfilePageProps) => {
   // Tab state
-  const [activeTab, setActiveTab] = useState<"Posts" | "Products" | "AI Chat">(
-    "Posts"
-  );
+  const [activeTab, setActiveTab] = useState<"Posts" | "Products" | "AI Chat">("Posts");
 
   // Filter states
   const [activePostCategory, setActivePostCategory] = useState("All");
@@ -4306,10 +4307,9 @@ export const ProfilePage = ({
   const [error, setError] = useState("");
 
   // Follow states
-  const [followers, setFollowers] = useState<number>(
-    parseInt(company.followers) || 0
-  );
+  const [followers, setFollowers] = useState<number>(parseInt(company.followers) || 0);
   const [isFollowing, setIsFollowing] = useState(false);
+  const [followLoading, setFollowLoading] = useState(false);
 
   // Post detail states
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
@@ -4322,17 +4322,11 @@ export const ProfilePage = ({
 
   // AI chat states
   const [chatInput, setChatInput] = useState("");
-  const [chatMessages, setChatMessages] = useState<
-    { role: "user" | "ai"; text: string }[]
-  >([
-    {
-      role: "ai",
-      text: `Hi! Ask anything about ${company.name}, products, or posts.`,
-    },
-  ]);
+  const [chatMessages, setChatMessages] = useState<{ role: "user" | "ai"; text: string }[]>([]);
   const [chatLoading, setChatLoading] = useState(false);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
-  // 🔁 Fallback: fetch botId if not provided in company prop
+  // Fallback: fetch botId if not provided in company prop
   const [fetchedBotId, setFetchedBotId] = useState<string | null>(company.botId || null);
   const [fetchingBot, setFetchingBot] = useState(false);
 
@@ -4358,7 +4352,15 @@ export const ProfilePage = ({
     getBotId();
   }, [company._id, company.botId]);
 
-  // Check follow status
+  // Reset follow state when user logs out
+  useEffect(() => {
+    if (!user) {
+      setIsFollowing(false);
+      setFollowers(parseInt(company.followers) || 0);
+    }
+  }, [user, company.followers]);
+
+  // Check follow status when user logs in
   useEffect(() => {
     const checkFollowStatus = async () => {
       if (!user?._id) return;
@@ -4452,6 +4454,63 @@ export const ProfilePage = ({
     fetchContent();
   }, [company._id]);
 
+  // Clear messages when user logs out
+  useEffect(() => {
+    if (!user) {
+      setChatMessages([]);
+    }
+  }, [user]);
+
+  // Fetch chat history when the AI Chat tab becomes active
+  useEffect(() => {
+    const fetchChatHistory = async () => {
+      if (activeTab !== "AI Chat" || !company._id) return;
+
+      const token = localStorage.getItem('authToken') || localStorage.getItem('token');
+      if (!token) {
+        setChatMessages([{ role: "ai", text: "Please log in to view chat history." }]);
+        onLoginRequest?.();
+        setLoadingHistory(false);
+        return;
+      }
+
+      setLoadingHistory(true);
+      try {
+        const res = await axios.get(
+          `${API_BASE_URL}/api/chat/history?businessId=${company._id}`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        const history = res.data.messages || [];
+
+        if (history.length > 0) {
+          setChatMessages(history);
+        } else {
+          setChatMessages([{
+            role: "ai",
+            text: `Hi! Ask anything about ${company.name}, products, or posts.`
+          }]);
+        }
+      } catch (err: any) {
+        console.error("Failed to load chat history:", err);
+        if (err.response?.status === 401) {
+          localStorage.removeItem('authToken');
+          localStorage.removeItem('token');
+          onLoginRequest?.();
+          setChatMessages([{ role: "ai", text: "Your session expired. Please log in again." }]);
+        } else {
+          setChatMessages([{
+            role: "ai",
+            text: `Hi! Ask anything about ${company.name}, products, or posts.`
+          }]);
+        }
+      } finally {
+        setLoadingHistory(false);
+      }
+    };
+
+    fetchChatHistory();
+  }, [activeTab, company._id, user?._id, onLoginRequest]);
+
   // Follow handler
   const handleFollow = async () => {
     if (!user?._id) {
@@ -4459,6 +4518,7 @@ export const ProfilePage = ({
       return;
     }
 
+    setFollowLoading(true);
     try {
       const res = await axios.post(`${API_BASE_URL}/api/follow/${company._id}`, {
         userId: user._id,
@@ -4470,6 +4530,8 @@ export const ProfilePage = ({
       }
     } catch (err) {
       console.error("Follow error:", err);
+    } finally {
+      setFollowLoading(false);
     }
   };
 
@@ -4509,11 +4571,7 @@ export const ProfilePage = ({
   };
 
   // Comment handler
-  const handleComment = async (
-    postId: string,
-    postIndex: number,
-    commentText: string
-  ) => {
+  const handleComment = async (postId: string, postIndex: number, commentText: string) => {
     if (!user?._id) {
       return { success: false, error: "Please login to comment" };
     }
@@ -4523,13 +4581,10 @@ export const ProfilePage = ({
     }
 
     try {
-      const res = await axios.post(
-        `${API_BASE_URL}/api/post/${postId}/comment`,
-        {
-          text: commentText,
-          userId: user._id,
-        }
-      );
+      const res = await axios.post(`${API_BASE_URL}/api/post/${postId}/comment`, {
+        text: commentText,
+        userId: user._id,
+      });
 
       const updated = [...posts];
       updated[postIndex].comments = res.data.commentsCount;
@@ -4558,7 +4613,7 @@ export const ProfilePage = ({
     }
   };
 
-  // ✅ AI Chat send handler – uses fetchedBotId as fallback
+  // Send chat message (with token)
   const handleSendChat = async () => {
     if (!chatInput.trim()) return;
 
@@ -4568,25 +4623,35 @@ export const ProfilePage = ({
     setChatLoading(true);
 
     try {
-      // Use fetchedBotId if available, otherwise fallback to company.botId
       const botId = fetchedBotId || company.botId;
-
       if (!botId) {
         setChatMessages((prev) => [
           ...prev,
-          {
-            role: "ai",
-            text: "This business hasn't set up an AI chatbot yet.",
-          },
+          { role: "ai", text: "This business hasn't set up an AI chatbot yet." },
         ]);
         setChatLoading(false);
         return;
       }
 
-      const res = await axios.post(`${API_BASE_URL}/api/chat`, {
-        botId,
-        question: chatInput,
-      });
+      const token = localStorage.getItem('authToken') || localStorage.getItem('token');
+      if (!token) {
+        setChatMessages((prev) => [...prev, { role: "ai", text: "Please log in to use the chat." }]);
+        onLoginRequest?.();
+        setChatLoading(false);
+        return;
+      }
+
+      const res = await axios.post(
+        `${API_BASE_URL}/api/chat`,
+        {
+          botId,
+          question: chatInput,
+          businessId: company._id,
+        },
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
 
       setChatMessages((prev) => [
         ...prev,
@@ -4595,16 +4660,21 @@ export const ProfilePage = ({
           text: res.data.answer,
         },
       ]);
-
-      console.log("Sources:", res.data.sources);
     } catch (err: any) {
       console.error("AI chat error:", err);
       let errorMessage = "Something went wrong while contacting AI.";
-      if (err.response?.data?.message) {
+
+      if (err.response?.status === 401) {
+        errorMessage = "Your session expired. Please log in again.";
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('token');
+        onLoginRequest?.();
+      } else if (err.response?.data?.message) {
         errorMessage = err.response.data.message;
       } else if (err.message) {
         errorMessage = err.message;
       }
+
       setChatMessages((prev) => [
         ...prev,
         {
@@ -4663,9 +4733,16 @@ export const ProfilePage = ({
 
               <button
                 onClick={handleFollow}
-                className="w-[110px] rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-green-700"
+                disabled={followLoading}
+                className="w-[110px] rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {isFollowing ? "Unfollow" : "Follow"}
+                {followLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin mx-auto" />
+                ) : isFollowing ? (
+                  "Unfollow"
+                ) : (
+                  "Follow"
+                )}
               </button>
             </div>
           </div>
@@ -4695,9 +4772,7 @@ export const ProfilePage = ({
           {["Posts", "Products", "AI Chat"].map((tab) => (
             <button
               key={tab}
-              onClick={() =>
-                setActiveTab(tab as "Posts" | "Products" | "AI Chat")
-              }
+              onClick={() => setActiveTab(tab as "Posts" | "Products" | "AI Chat")}
               className={`rounded-full px-5 py-2 text-sm font-medium transition ${
                 activeTab === tab
                   ? "bg-green-600 text-white"
@@ -4806,9 +4881,7 @@ export const ProfilePage = ({
                           <p className="truncate text-sm font-medium text-white">
                             {product.name}
                           </p>
-                          <p className="mt-1 text-sm text-green-400">
-                            ₹{product.price}
-                          </p>
+                          <p className="mt-1 text-sm text-green-400">₹{product.price}</p>
                         </div>
                       </div>
                     ))
@@ -4823,30 +4896,30 @@ export const ProfilePage = ({
             {activeTab === "AI Chat" && (
               <section className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-4">
                 <div className="mb-4 border-b border-white/10 pb-3">
-                  <h3 className="text-lg font-semibold text-white">
-                    AI Chat with {company.name}
-                  </h3>
+                  <h3 className="text-lg font-semibold text-white">AI Chat with {company.name}</h3>
                   <p className="text-sm text-zinc-400">
                     Ask about products, services, posts, or company details.
                   </p>
-                  {fetchingBot && (
-                    <p className="text-xs text-zinc-500 mt-1">Loading chatbot info...</p>
-                  )}
+                  {fetchingBot && <p className="mt-1 text-xs text-zinc-500">Loading chatbot info...</p>}
                 </div>
 
                 <div className="mb-4 flex h-[420px] flex-col gap-3 overflow-y-auto rounded-xl bg-black/30 p-4">
-                  {chatMessages.map((msg, index) => (
-                    <div
-                      key={index}
-                      className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm ${
-                        msg.role === "user"
-                          ? "ml-auto bg-green-600 text-white"
-                          : "mr-auto bg-zinc-800 text-zinc-100"
-                      }`}
-                    >
-                      {msg.text}
-                    </div>
-                  ))}
+                  {loadingHistory ? (
+                    <div className="flex items-center justify-center text-zinc-400">Loading conversation...</div>
+                  ) : (
+                    chatMessages.map((msg, index) => (
+                      <div
+                        key={index}
+                        className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm ${
+                          msg.role === "user"
+                            ? "ml-auto bg-green-600 text-white"
+                            : "mr-auto bg-zinc-800 text-zinc-100"
+                        }`}
+                      >
+                        {msg.text}
+                      </div>
+                    ))
+                  )}
 
                   {chatLoading && (
                     <div className="mr-auto rounded-2xl bg-zinc-800 px-4 py-3 text-sm text-zinc-300">
@@ -4863,10 +4936,11 @@ export const ProfilePage = ({
                     onKeyDown={(e) => e.key === "Enter" && handleSendChat()}
                     placeholder={`Ask AI about ${company.name}...`}
                     className="flex-1 rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white outline-none placeholder:text-zinc-500 focus:border-green-500"
+                    disabled={chatLoading || loadingHistory}
                   />
                   <button
                     onClick={handleSendChat}
-                    disabled={chatLoading || fetchingBot}
+                    disabled={chatLoading || loadingHistory || fetchingBot}
                     className="rounded-xl bg-green-600 px-5 py-3 text-sm font-medium text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     Send
@@ -4907,7 +4981,6 @@ export const ProfilePage = ({
     </div>
   );
 };
-
 interface FooterProps {
   companyName?: string;
 }
@@ -5330,9 +5403,6 @@ const LoginModal = ({ isOpen, onClose, onLogin, onOpenRegister }: LoginModalProp
   );
 };
 
-
-
-// ---------------- REGISTER MODAL ----------------
 interface RegisterModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -5561,26 +5631,51 @@ const RegisterModal = ({
             </button>
           </div>
 
-          {/* Interests */}
-          <div className="form-group">
-            <label>Select Interests</label>
+          {/* Interests - UPDATED STYLING */}
+          <div className="form-group" style={{ marginBottom: '1.5rem' }}>
+            <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#fff', marginBottom: '8px' }}>
+              Select Interests <span style={{ color: '#a8a8a8', fontSize: '12px', fontWeight: 'normal' }}>(Select at least one)</span>
+            </label>
+            
             {loading ? (
-              <div>Loading categories...</div>
+              <div style={{ color: '#a8a8a8', fontSize: '14px' }}>Loading categories...</div>
             ) : (
-              <div className="categories-section">
-                {categories.map((cat) => (
-                  <button
-                    key={cat._id}
-                    type="button"
-                    disabled={registerLoading}
-                    className={`category-btn ${
-                      interests.includes(cat.name) ? "active" : ""
-                    }`}
-                    onClick={() => toggleInterest(cat.name)}
-                  >
-                    {cat.name}
-                  </button>
-                ))}
+              <div style={{ 
+                display: 'flex', 
+                flexWrap: 'wrap', 
+                gap: '8px',
+                maxHeight: '120px', /* Limits height so it doesn't take over the screen */
+                overflowY: 'auto',  /* Adds a scrollbar if there are too many categories */
+                padding: '4px',
+                background: '#0a0a0a',
+                border: '1px solid #333',
+                borderRadius: '8px'
+              }}>
+                {categories.map((cat) => {
+                  const isSelected = interests.includes(cat.name);
+                  return (
+                    <button
+                      key={cat._id}
+                      type="button"
+                      disabled={registerLoading}
+                      onClick={() => toggleInterest(cat.name)}
+                      style={{
+                        padding: '6px 12px',
+                        borderRadius: '20px',
+                        fontSize: '12px',
+                        fontWeight: '500',
+                        cursor: registerLoading ? 'not-allowed' : 'pointer',
+                        transition: 'all 0.2s ease',
+                        border: isSelected ? '1px solid #00ff99' : '1px solid #333',
+                        background: isSelected ? 'rgba(0, 255, 153, 0.1)' : '#1a1a1a',
+                        color: isSelected ? '#00ff99' : '#ccc',
+                        opacity: registerLoading ? 0.6 : 1
+                      }}
+                    >
+                      {cat.name}
+                    </button>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -6243,7 +6338,6 @@ case "chat":
         <div className="main-wrapper">{renderPage()}</div>
       </div>
 
-      {!isSearchActive && routeParams.type !== "bot" && <FloatingBotButton />}
 
       <LoginModal
         isOpen={showLoginModal}
