@@ -4716,8 +4716,10 @@ app.get("/api/business/:id", async (req, res) => {
 });
 
 const PORT = process.env.PORT || 5000;
+const uri = process.env.MONGODB_URI;
+
 
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
-  
+  console.log("🔐 MONGODB_URI:", uri);
 });
