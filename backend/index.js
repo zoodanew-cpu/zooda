@@ -1,4 +1,4 @@
-require("dotenv").config();
+require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
@@ -17,7 +17,6 @@ const { embedText,cosineSim } = require("./lib/embeddings");
 const Chunk = require("./models/Chunk");
 const ChatMessage = require("./models/ChatMessage");
 
-require('dotenv').config();
 const app = express();
 app.use(cors());
 app.use(express.json());
