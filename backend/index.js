@@ -44,10 +44,9 @@ const storage = new CloudinaryStorage({
 });
 //'mongodb+srv://akhileshreddy811_db_user:6MQywIJtJR8oLeCo@cluster0.t0i7d7t.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0
 const upload = multer({ storage });
-console.log("MONGODB_URI exists?", !!process.env.MONGODB_URI);
 
 mongoose
-  .connect(process.env.MONGODB_URI)
+  .connect("mongodb+srv://zoodanew_db_user:BtEKCF6787xJg0Ha@cluster0.yaecgnu.mongodb.net/?appName=Cluster0")
   .then(() => {
     console.log("MongoDB Connected Successfully");
   })
@@ -4715,10 +4714,8 @@ app.get("/api/business/:id", async (req, res) => {
 });
 
 const PORT = process.env.PORT || 5000;
-const uri = process.env.MONGODB_URI;
 
 
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
-  console.log("🔐 MONGODB_URI:", uri);
 });
