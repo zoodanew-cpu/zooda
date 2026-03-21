@@ -45,7 +45,7 @@ const storage = new CloudinaryStorage({
 //'mongodb+srv://akhileshreddy811_db_user:6MQywIJtJR8oLeCo@cluster0.t0i7d7t.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0
 const upload = multer({ storage });
 console.log("MONGODB_URI exists?", !!process.env.MONGODB_URI);
-const MONGODB_URI = "mongodb://127.0.0.1:27017"
+const MONGODB_URI = process.env.MONGODB_URI
 mongoose
   .connect(MONGODB_URI)
   .then(() => {
@@ -3761,66 +3761,45 @@ app.get('/api/admin/businesses', async (req, res) => {
     res.status(500).json({ message: 'Server error fetching businesses' });
   }
 });
-
-// Delete a business
-
 app.delete('/api/admin/businesses/:businessId', async (req, res) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
-
   try {
-    const businessId = req.params.businessId;
+    const mongoose = require('mongoose');
 
-    // 1. Find the business to get the associated user ID
-    const business = await Business.findById(businessId).session(session);
+    const businessId = new mongoose.Types.ObjectId(req.params.businessId);
+
+    console.log("Deleting business:", businessId);
+
+    const business = await Business.findById(businessId);
+
     if (!business) {
-      await session.abortTransaction();
-      session.endSession();
-      return res.status(404).json({ message: 'Business not found' });
+      return res.status(404).json({ 
+        message: 'Business not found',
+        id: req.params.businessId
+      });
     }
 
-    const userId = business.user; // field name is 'user' in your Business schema
+    const userId = business.user;
 
-    // 2. Delete all related data (posts, products, promotions)
     await Promise.all([
-      Post.deleteMany({ business: businessId }).session(session),
-      Product.deleteMany({ business: businessId }).session(session),
-      Promotion.deleteMany({ business: businessId }).session(session),
+      Post.deleteMany({ business: businessId }),
+      Product.deleteMany({ business: businessId }),
+      Promotion.deleteMany({ business: businessId })
     ]);
 
-    // 3. Delete the business itself
-    await Business.findByIdAndDelete(businessId).session(session);
+    await Business.findByIdAndDelete(businessId);
 
-    // 4. Check if the user has any other businesses
-    const remainingBusinesses = await Business.countDocuments({ user: userId }).session(session);
-
-    if (remainingBusinesses === 0) {
-      // No other businesses → delete the user
-      await User.findByIdAndDelete(userId).session(session);
-      // Optional: Delete any other user‑related data (e.g., user profile, settings)
-      // await UserProfile.deleteOne({ user: userId }).session(session);
-    } else {
-      // User still has other businesses – no action needed on the user.
-      // If your User schema had a `businesses` array, you might remove this ID.
-    }
-
-    await session.commitTransaction();
-    session.endSession();
+    await User.findByIdAndDelete(userId);
 
     res.json({
       success: true,
-      message: `Business and associated data deleted successfully${
-        remainingBusinesses === 0 ? ' (user also deleted)' : ''
-      }`,
+      message: 'Business and user deleted successfully'
     });
+
   } catch (error) {
-    await session.abortTransaction();
-    session.endSession();
     console.error('Admin delete business error:', error);
     res.status(500).json({ message: 'Server error deleting business' });
   }
 });
-// Update a business
 app.put('/api/admin/businesses/:businessId', async (req, res) => {
   try {
     const { 
