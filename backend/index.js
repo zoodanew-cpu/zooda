@@ -3763,31 +3763,63 @@ app.get('/api/admin/businesses', async (req, res) => {
 });
 
 // Delete a business
+
 app.delete('/api/admin/businesses/:businessId', async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
   try {
     const businessId = req.params.businessId;
 
-    // Delete all related data first
-    await Promise.all([
-      Post.deleteMany({ business: businessId }),
-      Product.deleteMany({ business: businessId }),
-      Promotion.deleteMany({ business: businessId })
-    ]);
-
-    // Then delete the business
-    const business = await Business.findByIdAndDelete(businessId);
-    
+    // 1. Find the business to get the associated user ID
+    const business = await Business.findById(businessId).session(session);
     if (!business) {
+      await session.abortTransaction();
+      session.endSession();
       return res.status(404).json({ message: 'Business not found' });
     }
 
-    res.json({ success: true, message: 'Business and all associated data deleted successfully' });
+    const userId = business.user; // field name is 'user' in your Business schema
+
+    // 2. Delete all related data (posts, products, promotions)
+    await Promise.all([
+      Post.deleteMany({ business: businessId }).session(session),
+      Product.deleteMany({ business: businessId }).session(session),
+      Promotion.deleteMany({ business: businessId }).session(session),
+    ]);
+
+    // 3. Delete the business itself
+    await Business.findByIdAndDelete(businessId).session(session);
+
+    // 4. Check if the user has any other businesses
+    const remainingBusinesses = await Business.countDocuments({ user: userId }).session(session);
+
+    if (remainingBusinesses === 0) {
+      // No other businesses → delete the user
+      await User.findByIdAndDelete(userId).session(session);
+      // Optional: Delete any other user‑related data (e.g., user profile, settings)
+      // await UserProfile.deleteOne({ user: userId }).session(session);
+    } else {
+      // User still has other businesses – no action needed on the user.
+      // If your User schema had a `businesses` array, you might remove this ID.
+    }
+
+    await session.commitTransaction();
+    session.endSession();
+
+    res.json({
+      success: true,
+      message: `Business and associated data deleted successfully${
+        remainingBusinesses === 0 ? ' (user also deleted)' : ''
+      }`,
+    });
   } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
     console.error('Admin delete business error:', error);
     res.status(500).json({ message: 'Server error deleting business' });
   }
 });
-
 // Update a business
 app.put('/api/admin/businesses/:businessId', async (req, res) => {
   try {

@@ -2981,228 +2981,199 @@ const AllPostsPage = ({ onSelectPost, user, onLoginRequest }: AllPostsPageProps)
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [activeTab, setActiveTab] = useState<"Following" | "Unfollowing">("Following");
+  const [activeTab, setActiveTab] = useState<"Following" | "Unfollowing" | "Discover">("Following");
   const [showLoginModal, setShowLoginModal] = useState(false);
 
+  // Force 'Discover' tab if not logged in
+  useEffect(() => {
+    if (!user?._id) setActiveTab("Discover");
+    else if (activeTab === "Discover") setActiveTab("Following");
+  }, [user?._id, activeTab]);
+
   const fetchPosts = useCallback(async () => {
-    if (!user?._id) {
-      setLoading(false);
-      setPosts([]);
-      return;
-    }
-    
     try {
       setLoading(true);
       setError("");
 
-      const endpoint =
-        activeTab === "Following"
-          ? `https://api.zooda.in/api/posts/following/${user._id}`
-          : `https://api.zooda.in/api/posts/unfollowed/${user._id}`;
+      // ==========================================
+      // GUEST MODE: Fetch all posts from all businesses
+      // ==========================================
+      if (!user?._id) {
+        console.log('Fetching all public posts...');
+        const businessRes = await axios.get(`https://api.zooda.in/api/business/all`);
+        const businesses = Array.isArray(businessRes.data) ? businessRes.data : businessRes.data.businesses || [];
+
+        let allPublicPosts: any[] = [];
+
+        await Promise.all(businesses.map(async (business: any) => {
+          try {
+            const postRes = await axios.get(`https://api.zooda.in/api/post/${business._id}`);
+            const bPosts = postRes.data.posts || [];
+
+            const formattedPosts = bPosts.map((post: any, i: number) => {
+              let imageUrl = post.media?.[0]?.url || post.mediaUrl || post.imageUrl || `https://picsum.photos/600/400?random=${business._id}-${i}`;
+              if (!imageUrl.startsWith("http")) {
+                imageUrl = `https://api.zooda.in${imageUrl.startsWith("/") ? "" : "/"}${imageUrl}`;
+              }
+
+              let logoUrl = business.logoUrl;
+              if (logoUrl && !logoUrl.startsWith("http")) {
+                logoUrl = `https://api.zooda.in${logoUrl.startsWith("/") ? "" : "/"}${logoUrl}`;
+              }
+
+              return {
+                ...post,
+                _id: post._id || `post-${business._id}-${i}`,
+                imageUrl,
+                company: {
+                  _id: business._id,
+                  businessName: business.businessName || "Unknown Business",
+                  name: business.businessName || "Unknown Business",
+                  username: (business.businessName || "unknown").toLowerCase().replace(/[\s.]/g, "_"),
+                  logoUrl: logoUrl || null
+                },
+                likesCount: post.likesCount || post.likes || 0,
+                commentsCount: post.commentsCount || post.comments || 0,
+                isLiked: false,
+                likes: post.likesCount || post.likes || 0,
+                comments: post.commentsCount || post.comments || 0
+              };
+            });
+            allPublicPosts = [...allPublicPosts, ...formattedPosts];
+          } catch (err) {
+            console.error(`Error fetching posts for business ${business._id}:`, err);
+          }
+        }));
+
+        // Sort newest first
+        allPublicPosts.sort((a, b) => new Date(b.createdAt || b.date).getTime() - new Date(a.createdAt || a.date).getTime());
+        setPosts(allPublicPosts);
+        setLoading(false);
+        return;
+      }
+
+      // ==========================================
+      // LOGGED IN MODE: Fetch Following/Unfollowing
+      // ==========================================
+      const endpoint = activeTab === "Following"
+        ? `https://api.zooda.in/api/posts/following/${user._id}`
+        : `https://api.zooda.in/api/posts/unfollowed/${user._id}`;
 
       console.log('Fetching posts from:', endpoint);
       const response = await axios.get(endpoint);
       const data = response.data;
 
-      console.log('Posts API response:', data);
-
       if (data.success && Array.isArray(data.posts)) {
         const processed = await Promise.all(
           data.posts.map(async (post: any, i: number) => {
-            let imageUrl =
-              post.media?.[0]?.url ||
-              post.mediaUrl ||
-              post.imageUrl ||
-              `https://picsum.photos/600/400?random=${i}`;
+            let imageUrl = post.media?.[0]?.url || post.mediaUrl || post.imageUrl || `https://picsum.photos/600/400?random=${i}`;
+            if (!imageUrl.startsWith("http")) imageUrl = `https://api.zooda.in${imageUrl.startsWith("/") ? "" : "/"}${imageUrl}`;
 
-            if (!imageUrl.startsWith("http")) {
-              imageUrl = `https://api.zooda.in${
-                imageUrl.startsWith("/") ? "" : "/"
-              }${imageUrl}`;
-            }
-
-            // Fetch complete company details for each post
             let company = null;
             const companyId = post.business?._id || post.business;
             
             if (companyId) {
               try {
-                const companyResponse = await axios.get(
-                  `https://api.zooda.in/api/companies/${companyId}`
-                );
+                const companyResponse = await axios.get(`https://api.zooda.in/api/companies/${companyId}`);
                 if (companyResponse.data.success) {
                   company = companyResponse.data.company;
-                  
-                  // Process company logo URL
                   if (company.logoUrl) {
                     let logoUrl = company.logoUrl;
-                    if (!logoUrl.startsWith("http")) {
-                      logoUrl = `https://api.zooda.in${
-                        logoUrl.startsWith("/") ? "" : "/"
-                      }${logoUrl}`;
-                    }
+                    if (!logoUrl.startsWith("http")) logoUrl = `https://api.zooda.in${logoUrl.startsWith("/") ? "" : "/"}${logoUrl}`;
                     company.logoUrl = logoUrl;
                   }
-                  
-                  // Generate username from businessName
                   if (company.businessName) {
                     company.username = company.businessName.toLowerCase().replace(/[\s.]/g, "_");
                     company.name = company.businessName;
                   }
                 }
               } catch (err) {
-                console.error("Error fetching company:", err);
-                company = {
-                  _id: companyId,
-                  businessName: "Unknown Business",
-                  name: "Unknown Business",
-                  username: "unknown_business",
-                  logoUrl: null
-                };
+                company = { _id: companyId, businessName: "Unknown Business", name: "Unknown Business", username: "unknown_business", logoUrl: null };
               }
             }
 
-            // Get counts from post data - use the correct field names from your schema
-            const likesCount = post.likesCount || 0;
-            const commentsCount = post.commentsCount || 0;
-
-            // Check like status for each post
             let isLiked = false;
-            if (user?._id && post._id) {
-              try {
-                const likeResponse = await axios.get(
-                  `https://api.zooda.in/api/post/${post._id}/like-status/${user._id}`
-                );
-                console.log('Like status response for post', post._id, ':', likeResponse.data);
-                
-                if (likeResponse.data.success !== false) {
-                  isLiked = likeResponse.data.isLiked || false;
-                }
-              } catch (err) {
-                console.error("Error checking like status for post", post._id, ":", err);
-                isLiked = false;
-              }
+            try {
+              const likeResponse = await axios.get(`https://api.zooda.in/api/post/${post._id}/like-status/${user._id}`);
+              if (likeResponse.data.success !== false) isLiked = likeResponse.data.isLiked || false;
+            } catch (err) {
+              isLiked = false;
             }
 
             return {
               ...post,
               _id: post._id || `post-${i}`,
               imageUrl,
-              company: company || {
-                _id: companyId,
-                businessName: "Unknown Business",
-                name: "Unknown Business",
-                username: "unknown_business",
-                logoUrl: null
-              },
-              likesCount: likesCount,  // Use likesCount from schema
-              commentsCount: commentsCount,  // Use commentsCount from schema
+              company: company || { _id: companyId, businessName: "Unknown Business", name: "Unknown Business", username: "unknown_business", logoUrl: null },
+              likesCount: post.likesCount || 0,
+              commentsCount: post.commentsCount || 0,
               isLiked: isLiked,
-              // Add these for backward compatibility if needed
-              likes: likesCount,
-              comments: commentsCount
+              likes: post.likesCount || 0,
+              comments: post.commentsCount || 0
             };
           })
         );
-        console.log('Processed posts:', processed);
         setPosts(processed);
       } else {
         throw new Error("Invalid API response format");
       }
     } catch (err: any) {
-      console.error("Error fetching posts:", err);
       setError(err.message || "Failed to load posts");
     } finally {
       setLoading(false);
     }
   }, [user?._id, activeTab]);
 
-  // Handle login request
-  const handleLoginRequest = () => {
-    setShowLoginModal(true);
-  };
-
+  const handleLoginRequest = () => setShowLoginModal(true);
+  
   const handleLoginSuccess = (userData: User) => {
     setShowLoginModal(false);
-    if (userData._id) {
-      fetchPosts();
-    }
+    if (userData._id) fetchPosts();
   };
 
   const handleLike = async (postId: string, postIndex: number) => {
-    if (!user?._id) {
-      return;
-    }
-
+    if (!user?._id) return;
     try {
-      console.log('Liking post:', postId, 'by user:', user._id);
-      
-      // Create optimistic update first
       const updatedPosts = [...posts];
       const post = updatedPosts[postIndex];
       const newLikeStatus = !post.isLiked;
       const newLikesCount = newLikeStatus ? (post.likesCount || 0) + 1 : (post.likesCount || 0) - 1;
 
-      // Optimistic update
       updatedPosts[postIndex] = {
         ...post,
         isLiked: newLikeStatus,
         likesCount: newLikesCount,
-        likes: newLikesCount // Keep for backward compatibility
+        likes: newLikesCount
       };
       setPosts(updatedPosts);
 
-      // Make API call
-      const response = await axios.post(
-        `https://api.zooda.in/api/post/${postId}/like`,
-        {
-          userId: user._id,
-        }
-      );
+      const response = await axios.post(`https://api.zooda.in/api/post/${postId}/like`, { userId: user._id });
 
-      console.log('Like API response:', response.data);
-
-      // Verify the response matches our optimistic update
       if (response.data.success) {
-        // Update with actual server response
         const finalUpdatedPosts = [...posts];
         finalUpdatedPosts[postIndex] = {
           ...finalUpdatedPosts[postIndex],
           isLiked: response.data.isLiked,
           likesCount: response.data.likesCount,
-          likes: response.data.likesCount // Keep for backward compatibility
+          likes: response.data.likesCount
         };
         setPosts(finalUpdatedPosts);
-        
-        console.log('Post updated with server response:', finalUpdatedPosts[postIndex]);
       } else {
-        // Server returned error, revert optimistic update
         const revertedPosts = [...posts];
         revertedPosts[postIndex] = {
           ...revertedPosts[postIndex],
           isLiked: !revertedPosts[postIndex].isLiked,
-          likesCount: revertedPosts[postIndex].isLiked 
-            ? (revertedPosts[postIndex].likesCount || 0) - 1 
-            : (revertedPosts[postIndex].likesCount || 0) + 1,
-          likes: revertedPosts[postIndex].isLiked 
-            ? (revertedPosts[postIndex].likes || 0) - 1 
-            : (revertedPosts[postIndex].likes || 0) + 1
+          likesCount: revertedPosts[postIndex].isLiked ? (revertedPosts[postIndex].likesCount || 0) - 1 : (revertedPosts[postIndex].likesCount || 0) + 1,
+          likes: revertedPosts[postIndex].isLiked ? (revertedPosts[postIndex].likes || 0) - 1 : (revertedPosts[postIndex].likes || 0) + 1
         };
         setPosts(revertedPosts);
-        
-        console.error("Server returned error for like:", response.data.message);
         alert(response.data.message || "Failed to like post");
       }
-
     } catch (err: any) {
-      console.error("Error liking post:", err);
-      
-      // Revert optimistic update on error
       const revertedPosts = [...posts];
       const currentPost = revertedPosts[postIndex];
       const currentLikesCount = currentPost.likesCount || 0;
       const currentIsLiked = currentPost.isLiked;
-      
       revertedPosts[postIndex] = {
         ...currentPost,
         isLiked: !currentIsLiked,
@@ -3210,60 +3181,34 @@ const AllPostsPage = ({ onSelectPost, user, onLoginRequest }: AllPostsPageProps)
         likes: currentIsLiked ? currentLikesCount - 1 : currentLikesCount + 1
       };
       setPosts(revertedPosts);
-      
       alert(err.response?.data?.message || "Failed to like post");
     }
   };
 
   const handleComment = async (postId: string, postIndex: number, commentText: string) => {
-    if (!user?._id) {
-      return { success: false, error: "Please login to comment" };
-    }
-
-    if (!commentText.trim()) {
-      return { success: false, error: "Comment cannot be empty" };
-    }
+    if (!user?._id) return { success: false, error: "Please login to comment" };
+    if (!commentText.trim()) return { success: false, error: "Comment cannot be empty" };
 
     try {
-      console.log('Sending comment for post:', postId, 'by user:', user._id);
-      
-      const response = await axios.post(
-        `https://api.zooda.in/api/post/${postId}/comment`,
-        {
-          text: commentText,
-          userId: user._id,
-        }
-      );
-
-      console.log('Comment API response:', response.data);
+      const response = await axios.post(`https://api.zooda.in/api/post/${postId}/comment`, {
+        text: commentText,
+        userId: user._id,
+      });
 
       if (response.data.success) {
-        // Update comment count
         const updatedPosts = [...posts];
         updatedPosts[postIndex] = {
           ...updatedPosts[postIndex],
           commentsCount: response.data.commentsCount,
-          comments: response.data.commentsCount // Keep for backward compatibility
+          comments: response.data.commentsCount
         };
         setPosts(updatedPosts);
-
-        return { 
-          success: true, 
-          comment: response.data.comment,
-          commentsCount: response.data.commentsCount
-        };
+        return { success: true, comment: response.data.comment, commentsCount: response.data.commentsCount };
       } else {
-        return { 
-          success: false, 
-          error: response.data.message || "Failed to post comment" 
-        };
+        return { success: false, error: response.data.message || "Failed to post comment" };
       }
     } catch (err: any) {
-      console.error("Error commenting:", err);
-      return { 
-        success: false, 
-        error: err.response?.data?.message || err.message || "Failed to post comment" 
-      };
+      return { success: false, error: err.response?.data?.message || err.message || "Failed to post comment" };
     }
   };
 
@@ -3284,81 +3229,15 @@ const AllPostsPage = ({ onSelectPost, user, onLoginRequest }: AllPostsPageProps)
     }
   };
 
-  const refreshPosts = useCallback(() => {
-    fetchPosts();
-  }, [fetchPosts]);
+  const refreshPosts = useCallback(() => { fetchPosts(); }, [fetchPosts]);
 
-  useEffect(() => {
-    fetchPosts();
-  }, [fetchPosts, activeTab]);
-
-  // Show login prompt when user is not logged in
-  if (!user?._id) {
-    return (
-      <>
-        <div className="app-center login-prompt">
-          <div className="login-prompt-content">
-            <h2>Join the Community</h2>
-            <p>Login to see posts from businesses you follow and discover new ones!</p>
-            <button 
-              onClick={handleLoginRequest} 
-              className="login-btn-primary"
-            >
-              Login to Continue
-            </button>
-            <div className="login-features">
-              <div className="feature">
-                <span className="material-icons">favorite</span>
-                <span>Like and save your favorite posts</span>
-              </div>
-              <div className="feature">
-                <span className="material-icons">chat</span>
-                <span>Join conversations with comments</span>
-              </div>
-              <div className="feature">
-                <span className="material-icons">business</span>
-                <span>Discover new businesses to follow</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Green theme override for login prompt */}
-        <style>{`
-          .login-prompt h2 {
-            color: #2e7d32; /* dark green */
-          }
-          .login-prompt .login-btn-primary {
-            background-color: #4caf50; /* green */
-            border-color: #388e3c;
-            color: white;
-          }
-          .login-prompt .login-btn-primary:hover {
-            background-color: #388e3c; /* darker green */
-          }
-          .login-prompt .feature .material-icons {
-            color: #4caf50; /* green */
-          }
-          .login-prompt .feature span:last-child {
-            color: #1b5e20; /* dark green text */
-          }
-        `}</style>
-
-        <LoginModal
-          isOpen={showLoginModal}
-          onClose={() => setShowLoginModal(false)}
-          onLogin={handleLoginSuccess}
-          onOpenRegister={() => setShowLoginModal(false)}
-        />
-      </>
-    );
-  }
+  useEffect(() => { fetchPosts(); }, [fetchPosts, activeTab]);
 
   if (loading)
     return (
       <div className="app-center">
         <p className="text-default">
-          Loading {activeTab.toLowerCase()} posts...
+          Loading posts...
         </p>
       </div>
     );
@@ -3378,18 +3257,26 @@ const AllPostsPage = ({ onSelectPost, user, onLoginRequest }: AllPostsPageProps)
       <main className="all-posts-page">
         <div className="tabs-container">
           <div className="tabs">
-            <button
-              className={`tab ${activeTab === "Following" ? "active" : ""}`}
-              onClick={() => setActiveTab("Following")}
-            >
-              Following
-            </button>
-            <button
-              className={`tab ${activeTab === "Unfollowing" ? "active" : ""}`}
-              onClick={() => setActiveTab("Unfollowing")}
-            >
-              Unfollowing
-            </button>
+            {user?._id ? (
+              <>
+                <button
+                  className={`tab ${activeTab === "Following" ? "active" : ""}`}
+                  onClick={() => setActiveTab("Following")}
+                >
+                  Following
+                </button>
+                <button
+                  className={`tab ${activeTab === "Unfollowing" ? "active" : ""}`}
+                  onClick={() => setActiveTab("Unfollowing")}
+                >
+                  Unfollowing
+                </button>
+              </>
+            ) : (
+              <button className="tab active">
+                Discover All Posts
+              </button>
+            )}
           </div>
           <button 
             onClick={refreshPosts} 
@@ -3409,7 +3296,7 @@ const AllPostsPage = ({ onSelectPost, user, onLoginRequest }: AllPostsPageProps)
         </div>
 
         {posts.length === 0 ? (
-          <div className="no-posts">No {activeTab.toLowerCase()} posts found</div>
+          <div className="no-posts">No posts found</div>
         ) : (
           <div className="posts-feed">
             {posts.map((post, index) => (
@@ -3439,6 +3326,7 @@ const AllPostsPage = ({ onSelectPost, user, onLoginRequest }: AllPostsPageProps)
     </>
   );
 };
+
 
 interface PostGridItemProps {
   post: Post;
