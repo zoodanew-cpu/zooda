@@ -45,7 +45,7 @@ const storage = new CloudinaryStorage({
 //'mongodb+srv://akhileshreddy811_db_user:6MQywIJtJR8oLeCo@cluster0.t0i7d7t.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0
 const upload = multer({ storage });
 console.log("MONGODB_URI exists?", !!process.env.MONGODB_URI);
-const MONGODB_URI = "mongodb+srv://zoodanew_db_user:BtEKCF6787xJg0Ha@cluster0.yaecgnu.mongodb.net/?appName=Cluster0"
+const MONGODB_URI = "mongodb://127.0.0.1:27017"
 mongoose
   .connect(MONGODB_URI)
   .then(() => {
@@ -477,6 +477,7 @@ const categorySchema = new mongoose.Schema({
   timestamps: true
 });
 const Category = mongoose.model('Category', categorySchema);
+
 const authMiddleware = async (req, res, next) => {
   try {
     const token = req.header('Authorization')?.replace('Bearer ', '');
@@ -484,7 +485,6 @@ const authMiddleware = async (req, res, next) => {
       return res.status(401).json({ success: false, message: 'No token, authorization denied' });
     }
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    // Use User, not Client
     const user = await User.findById(decoded.id).select('-password');
     if (!user) {
       return res.status(401).json({ success: false, message: 'User not found' });
@@ -499,14 +499,15 @@ const authMiddleware = async (req, res, next) => {
 const generateToken = (user) => {
   return jwt.sign(
     {
-      id: user._id,
+      id: user._id,          // ← must match the property used in authMiddleware (decoded.id)
       email: user.email,
       role: user.role,
     },
     process.env.JWT_SECRET,
-    { expiresIn: "30d" }
+    { expiresIn: '30d' }
   );
 };
+
 const getUserBusiness = async (userId) => {
   try {
     return await Business.findOne({ user: userId });
@@ -551,84 +552,73 @@ const auth = async (req, res, next) => {
     });
   }
 };
-
-
 app.post('/api/register', async (req, res) => {
-  try {
-    const { firstName, lastName, email, password } = req.body;
+  try {
+    const { firstName, lastName, email, password } = req.body;
 
-    if (!firstName || !lastName || !email || !password) {
-      return res.status(400).json({ message: 'All fields are required' });
-    }
+    if (!firstName || !lastName || !email || !password) {
+      return res.status(400).json({ message: 'All fields are required' });
+    }
+    if (password.length < 6) {
+      return res.status(400).json({ message: 'Password must be at least 6 characters' });
+    }
 
-    if (password.length < 6) {
-      return res.status(400).json({ message: 'Password must be at least 6 characters' });
-    }
+    const userExists = await User.findOne({ email });
+    if (userExists) {
+      return res.status(400).json({ message: 'User already exists with this email' });
+    }
 
-    const userExists = await User.findOne({ email });
-    if (userExists) {
-      return res.status(400).json({ message: 'User already exists with this email' });
-    }
+    const user = await User.create({ firstName, lastName, email, password });
 
-    const user = await User.create({
-      firstName,
-      lastName,
-      email,
-      password,
-    });
+    const token = generateToken(user);  // ✅ pass full user object
 
-    if (user) {
-  const token = generateToken(user);      
-      res.status(201).json({
-        success: true,
-        token,
-        user: {
-          id: user._id,
-          firstName: user.firstName,
-          lastName: user.lastName,
-          email: user.email,
-          role: user.role,
-        },
-      });
-    } else {
-      res.status(400).json({ message: 'Invalid user data' });
-    }
-  } catch (error) {
-    console.error('Registration error:', error);
-    res.status(500).json({ message: 'Server error during registration' });
-  }
+    res.status(201).json({
+      success: true,
+      token,
+      user: {
+        id: user._id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        role: user.role,
+      },
+    });
+  } catch (error) {
+    console.error('Registration error:', error);
+    res.status(500).json({ message: 'Server error during registration' });
+  }
 });
+
 app.post('/api/login', async (req, res) => {
-  try {
-    const { email, password } = req.body;
+  try {
+    const { email, password } = req.body;
 
-    if (!email || !password) {
-      return res.status(400).json({ message: 'Email and password are required' });
-    }
+    if (!email || !password) {
+      return res.status(400).json({ message: 'Email and password are required' });
+    }
 
-    const user = await User.findOne({ email }).select('+password');
-    
-    if (user && (await user.matchPassword(password))) {
-      const token = generateToken(user);
-      
-      res.json({
-        success: true,
-        token,
-        user: {
-          id: user._id,
-          firstName: user.firstName,
-          lastName: user.lastName,
-          email: user.email,
-          role: user.role,
-        },
-      });
-    } else {
-      res.status(401).json({ message: 'Invalid email or password' });
-    }
-  } catch (error) {
-    console.error('Login error:', error);
-    res.status(500).json({ message: 'Server error during login' });
-  }
+    const user = await User.findOne({ email }).select('+password');
+    if (user && (await user.matchPassword(password))) {
+      const token = generateToken(user);  // ✅ pass full user object
+
+      res.json({
+        success: true,
+        token,
+        user: {
+          id: user._id,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          email: user.email,
+          role: user.role,
+        },
+      });
+    } else {
+      res.status(401).json({ message: 'Invalid email or password' });
+    }
+  } catch (error) {
+    console.error('Login error:', error);
+    res.status(500).json({ message: 'Server error during login' });
+  }
 });
 app.post('/api/auth/register', async (req, res) => {
   try {
@@ -1123,30 +1113,26 @@ app.get("/api/dashboard/:businessId", async (req, res) => {
     });
   }
 });
-app.get("/api/business/me", authMiddleware, async (req, res) => {
+app.get('/api/business/me', authMiddleware, async (req, res) => {
   try {
     const business = await Business.findOne({ user: req.user.id })
-      .populate("user", "firstName lastName email avatar")
+      .populate('user', 'firstName lastName email avatar')
       .lean();
 
     if (!business) {
       return res.status(404).json({
         success: false,
-        message: "No business found for this user",
+        message: 'No business found for this user',
       });
     }
 
-    res.json({
-      success: true,
-      business,
-    });
+    res.json({ success: true, business });
   } catch (error) {
-    console.error("Fetch business error:", error);
-
+    console.error('Fetch business error:', error);
     res.status(500).json({
       success: false,
-      message: "Failed to fetch business",
-      ...(process.env.NODE_ENV === "development" && { error: error.message }),
+      message: 'Failed to fetch business',
+      ...(process.env.NODE_ENV === 'development' && { error: error.message }),
     });
   }
 });

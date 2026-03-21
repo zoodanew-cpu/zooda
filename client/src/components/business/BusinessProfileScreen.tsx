@@ -17,7 +17,7 @@ import {
   Loader2
 } from "lucide-react";
 import { Link } from "react-router-dom";
-import axios from "@/lib/api";
+import api from "@/lib/api";   // ✅ use the configured api instance
 
 interface Business {
   _id: string;
@@ -37,16 +37,16 @@ const BusinessProfileScreen: React.FC = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [editFormData, setEditFormData] = useState<Partial<Business>>({});
   const [editLogo, setEditLogo] = useState<File | null>(null);
-  const [removeCurrentLogo, setRemoveCurrentLogo] = useState(false); // new state
+  const [removeCurrentLogo, setRemoveCurrentLogo] = useState(false);
   const [editLoading, setEditLoading] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
-  const [editErrors, setEditErrors] = useState<string[]>([]); // for validation array
+  const [editErrors, setEditErrors] = useState<string[]>([]);
 
   const fetchBusiness = async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await axios.get("/business/me");
+      const res = await api.get("/business/me");
       if (res.data?.business) {
         setBusiness(res.data.business);
       } else {
@@ -68,7 +68,6 @@ const BusinessProfileScreen: React.FC = () => {
     fetchBusiness();
   }, []);
 
-  // Initialize edit form when business data is available
   useEffect(() => {
     if (business) {
       setEditFormData({
@@ -79,7 +78,6 @@ const BusinessProfileScreen: React.FC = () => {
         businessPhone: business.businessPhone || "",
         businessWebsite: business.businessWebsite || "",
       });
-      // Reset logo removal state when business changes
       setRemoveCurrentLogo(false);
       setEditLogo(null);
     }
@@ -97,7 +95,6 @@ const BusinessProfileScreen: React.FC = () => {
   const handleEditFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       setEditLogo(e.target.files[0]);
-      // When a new file is selected, uncheck the remove checkbox
       setRemoveCurrentLogo(false);
     }
   };
@@ -118,17 +115,13 @@ const BusinessProfileScreen: React.FC = () => {
         }
       });
 
-      // Handle logo: if new file selected, append it
       if (editLogo) {
         data.append("media", editLogo);
-      } 
-      // If no new file but remove checkbox is checked, send removeLogo flag
-      else if (removeCurrentLogo) {
+      } else if (removeCurrentLogo) {
         data.append("removeLogo", "true");
       }
-      // Otherwise, no logo field is sent – keep existing
 
-      const res = await axios.put(`/business/${business._id}`, data, {
+      const res = await api.put(`/business/${business._id}`, data, {
         headers: { "Content-Type": "multipart/form-data" },
       });
 
@@ -138,7 +131,6 @@ const BusinessProfileScreen: React.FC = () => {
         setEditLogo(null);
         setRemoveCurrentLogo(false);
       } else {
-        // Handle error messages (could be string or array)
         if (res.data.errors && Array.isArray(res.data.errors)) {
           setEditErrors(res.data.errors);
         } else {
@@ -163,7 +155,6 @@ const BusinessProfileScreen: React.FC = () => {
     setEditErrors([]);
     setEditLogo(null);
     setRemoveCurrentLogo(false);
-    // Reset form to original business data
     if (business) {
       setEditFormData({
         businessName: business.businessName,
@@ -176,7 +167,6 @@ const BusinessProfileScreen: React.FC = () => {
     }
   };
 
-  // Loading state with skeleton
   if (loading) {
     return (
       <div className="max-w-4xl mx-auto p-6">
@@ -203,7 +193,6 @@ const BusinessProfileScreen: React.FC = () => {
     );
   }
 
-  // Error state
   if (error) {
     return (
       <motion.div
@@ -225,7 +214,6 @@ const BusinessProfileScreen: React.FC = () => {
     );
   }
 
-  // No business registered
   if (!business) {
     return (
       <motion.div
@@ -249,7 +237,6 @@ const BusinessProfileScreen: React.FC = () => {
     );
   }
 
-  // Edit mode
   if (isEditing) {
     return (
       <motion.div
@@ -268,7 +255,6 @@ const BusinessProfileScreen: React.FC = () => {
             </button>
           </div>
 
-          {/* Display validation errors */}
           {editErrors.length > 0 && (
             <div className="mb-4 p-3 bg-destructive/10 text-destructive rounded-lg text-sm">
               <ul className="list-disc pl-5">
@@ -285,7 +271,6 @@ const BusinessProfileScreen: React.FC = () => {
           )}
 
           <form onSubmit={handleEditSubmit} className="space-y-5">
-            {/* Business Name */}
             <div>
               <label className="text-sm font-medium">Business Name</label>
               <input
@@ -297,7 +282,6 @@ const BusinessProfileScreen: React.FC = () => {
               />
             </div>
 
-            {/* Category */}
             <div>
               <label className="text-sm font-medium">Category</label>
               <input
@@ -309,7 +293,6 @@ const BusinessProfileScreen: React.FC = () => {
               />
             </div>
 
-            {/* Description */}
             <div>
               <label className="text-sm font-medium">Description</label>
               <textarea
@@ -321,7 +304,6 @@ const BusinessProfileScreen: React.FC = () => {
               />
             </div>
 
-            {/* Website */}
             <div className="flex items-center gap-2">
               <Globe size={16} />
               <input
@@ -333,7 +315,6 @@ const BusinessProfileScreen: React.FC = () => {
               />
             </div>
 
-            {/* Phone */}
             <div className="flex items-center gap-2">
               <Phone size={16} />
               <input
@@ -345,7 +326,6 @@ const BusinessProfileScreen: React.FC = () => {
               />
             </div>
 
-            {/* Address */}
             <div className="flex items-center gap-2">
               <MapPin size={16} />
               <input
@@ -357,7 +337,6 @@ const BusinessProfileScreen: React.FC = () => {
               />
             </div>
 
-            {/* Logo Upload */}
             <div>
               <label className="text-sm font-medium flex items-center gap-2 mb-2">
                 <Upload size={16} />
@@ -373,7 +352,6 @@ const BusinessProfileScreen: React.FC = () => {
                   Current logo will be kept if no new file is selected.
                 </p>
               )}
-              {/* Logo removal checkbox – only if no new file is selected */}
               {business.logoUrl && (
                 <div className="flex items-center gap-2 mt-2">
                   <input
@@ -381,7 +359,7 @@ const BusinessProfileScreen: React.FC = () => {
                     id="removeLogo"
                     checked={removeCurrentLogo}
                     onChange={(e) => setRemoveCurrentLogo(e.target.checked)}
-                    disabled={!!editLogo} // disabled when new file chosen
+                    disabled={!!editLogo}
                   />
                   <label htmlFor="removeLogo" className="text-sm text-muted-foreground">
                     Remove current logo (no new logo will be uploaded)
@@ -390,7 +368,6 @@ const BusinessProfileScreen: React.FC = () => {
               )}
             </div>
 
-            {/* Actions */}
             <div className="flex gap-3 pt-4">
               <button
                 type="submit"
@@ -419,7 +396,6 @@ const BusinessProfileScreen: React.FC = () => {
     );
   }
 
-  // View mode (profile)
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -427,7 +403,6 @@ const BusinessProfileScreen: React.FC = () => {
       className="max-w-4xl mx-auto p-6"
     >
       <div className="bg-card rounded-2xl border border-border overflow-hidden relative">
-        {/* Header with edit button */}
         <div className="bg-gradient-to-r from-primary to-info p-6">
           <div className="flex items-center gap-4">
             {business.logoUrl ? (
@@ -447,7 +422,6 @@ const BusinessProfileScreen: React.FC = () => {
             </div>
           </div>
 
-          {/* Edit button – positioned top‑right */}
           <button
             onClick={() => setIsEditing(true)}
             className="absolute top-4 right-4 p-2 bg-white/20 rounded-full hover:bg-white/30 transition-colors"
@@ -457,7 +431,6 @@ const BusinessProfileScreen: React.FC = () => {
           </button>
         </div>
 
-        {/* Content */}
         <div className="p-6 grid md:grid-cols-2 gap-6">
           <InfoItem
             icon={<FileText size={14} aria-hidden="true" />}

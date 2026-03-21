@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Menu, Building } from "lucide-react";
-import axios from "@/lib/api";
+import api from "@/lib/api";
 
-// Components
+// Components (adjust imports as needed)
 import Notification from "@/components/ui/Notification";
 import LoadingSpinner from "@/components/ui/LoadingSpinner";
 import AuthScreen from "@/components/auth/AuthScreen";
@@ -13,7 +13,7 @@ import ProductsScreen from "@/components/products/ProductsScreen";
 import PromotionsScreen from "@/components/promotions/PromotionsScreen";
 import Sidebar from "@/components/layout/Sidebar";
 import BusinessProfileScreen from "@/components/business/BusinessProfileScreen";
-import { ChatbotWizard } from "@/components/Chat/Chatbot"; // adjust path if needed
+import { ChatbotWizard } from "@/components/Chat/Chatbot";
 
 // Types
 interface User {
@@ -33,10 +33,9 @@ interface Business {
   businessPhone?: string;
   businessWebsite?: string;
   logoUrl?: string;
-  user: User | string; // populated user or user ID
+  user: User | string;
 }
 
-/* ---------------- SAFE LOCAL STORAGE PARSER ---------------- */
 const safeParse = (data: string | null) => {
   try {
     return JSON.parse(data || "null");
@@ -46,36 +45,23 @@ const safeParse = (data: string | null) => {
 };
 
 const Index = () => {
-  const [token, setToken] = useState<string | null>(
-    localStorage.getItem("token")
-  );
-  const [user, setUser] = useState<User | null>(
-    safeParse(localStorage.getItem("user"))
-  );
+  const [token, setToken] = useState<string | null>(localStorage.getItem("token"));
+  const [user, setUser] = useState<User | null>(safeParse(localStorage.getItem("user")));
   const [business, setBusiness] = useState<Business | null | undefined>(
     safeParse(localStorage.getItem("business"))
   );
   const [businessError, setBusinessError] = useState<string | null>(null);
-
   const [currentPage, setCurrentPage] = useState("dashboard");
   const [isLoading, setIsLoading] = useState(true);
-  const [notification, setNotification] = useState<{
-    message: string;
-    type: "success" | "error" | "info";
-  } | null>(null);
+  const [notification, setNotification] = useState<{ message: string; type: "success" | "error" | "info" } | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
 
-  /* ---------------- NOTIFICATION ---------------- */
-  const notify = useCallback(
-    (type: "success" | "error" | "info", message: string) => {
-      setNotification({ message, type });
-      setTimeout(() => setNotification(null), 5000);
-    },
-    []
-  );
+  const notify = useCallback((type: "success" | "error" | "info", message: string) => {
+    setNotification({ message, type });
+    setTimeout(() => setNotification(null), 5000);
+  }, []);
 
-  /* ---------------- LOGOUT ---------------- */
   const handleLogout = useCallback(() => {
     localStorage.clear();
     setToken(null);
@@ -86,21 +72,15 @@ const Index = () => {
     notify("info", "Logged out successfully.");
   }, [notify]);
 
-  /* ---------------- CHECK AUTH & FETCH BUSINESS ---------------- */
-  const checkAuth = useCallback(async () => {
+  // Shared business fetch logic
+  const fetchBusiness = useCallback(async () => {
     const storedToken = localStorage.getItem("token");
-    if (!storedToken) {
-      setIsLoading(false);
-      setCurrentPage("login");
-      return;
-    }
+    if (!storedToken) return null;
 
     try {
-      // Fetch business associated with the logged-in user
-      const res = await axios.get("/business/me");
+      const res = await api.get("/business/me");
       if (res.data?.business) {
         const businessData = res.data.business;
-        // The business object includes a populated user field
         const fetchedUser = businessData.user;
         if (fetchedUser && typeof fetchedUser === "object") {
           setUser(fetchedUser);
@@ -109,36 +89,54 @@ const Index = () => {
         setBusiness(businessData);
         localStorage.setItem("business", JSON.stringify(businessData));
         setBusinessError(null);
-        setCurrentPage("dashboard");
+        return businessData;
       } else {
-        // No business found (should be 404, but handle gracefully)
         setBusiness(null);
         setBusinessError(null);
-        // Keep existing user (from localStorage) – it might be from login
+        return null;
       }
     } catch (error: any) {
       if (error.response?.status === 401) {
         handleLogout();
         notify("error", "Session expired. Please log in again.");
+        return null;
       } else if (error.response?.status === 404) {
-        // No business registered – this is not an error
         setBusiness(null);
         setBusinessError(null);
-        // Keep user if available
+        return null;
       } else {
         setBusinessError("Failed to load business. Please try again.");
         notify("error", "Network error. Please try again.");
+        return null;
       }
-    } finally {
-      setIsLoading(false);
     }
   }, [handleLogout, notify]);
 
+  // Initial auth check
   useEffect(() => {
-    checkAuth();
-  }, [checkAuth]);
+    const init = async () => {
+      setIsLoading(true);
+      const storedToken = localStorage.getItem("token");
+      if (!storedToken) {
+        setIsLoading(false);
+        setCurrentPage("login");
+        return;
+      }
+      setToken(storedToken);
+      await fetchBusiness();
+      setIsLoading(false);
+      setCurrentPage("dashboard");
+    };
+    init();
+  }, [fetchBusiness]);
 
-  /* ---------------- AUTH SUCCESS (from login/register) ---------------- */
+  // Re-fetch business when token or user changes (e.g., after login)
+  useEffect(() => {
+    if (token && user) {
+      fetchBusiness();
+    }
+  }, [token, user, fetchBusiness]);
+
   const handleAuthSuccess = useCallback(
     (type: string, message: string, newToken?: string, newUser?: any) => {
       if (type === "success" && newToken && newUser) {
@@ -146,7 +144,6 @@ const Index = () => {
         localStorage.setItem("user", JSON.stringify(newUser));
         setToken(newToken);
         setUser(newUser);
-        // Business will be fetched separately by checkAuth (which runs after state update)
         setCurrentPage("dashboard");
       }
       notify(type as "success" | "error" | "info", message);
@@ -154,14 +151,11 @@ const Index = () => {
     [notify]
   );
 
-  /* ---------------- HANDLE AI SETUP COMPLETION ---------------- */
   const handleAiSetupComplete = useCallback((botId: string) => {
     notify("success", "AI Chatbot is ready!");
-    // Optionally update business data or navigate
     setCurrentPage("dashboard");
   }, [notify]);
 
-  /* ---------------- PAGE RENDER ---------------- */
   const renderContent = () => {
     if (isLoading) {
       return (
@@ -176,25 +170,18 @@ const Index = () => {
         <AuthScreen
           isRegister={authMode === "register"}
           onAuthSuccess={handleAuthSuccess}
-          switchMode={() =>
-            setAuthMode(authMode === "login" ? "register" : "login")
-          }
+          switchMode={() => setAuthMode(authMode === "login" ? "register" : "login")}
         />
       );
     }
 
-    // Business is required for business-specific pages; handle missing business
+    // Business required for most pages
     if (!business && currentPage !== "business-profile" && currentPage !== "ai-setup") {
       return (
         <div className="p-6 text-center">
           <h2 className="text-xl font-bold mb-4">No Business Found</h2>
-          <p className="text-muted-foreground mb-4">
-            You need to create a business profile first.
-          </p>
-          <button
-            onClick={() => setCurrentPage("business-profile")}
-            className="px-4 py-2 bg-primary text-white rounded-lg"
-          >
+          <p className="text-muted-foreground mb-4">You need to create a business profile first.</p>
+          <button onClick={() => setCurrentPage("business-profile")} className="px-4 py-2 bg-primary text-white rounded-lg">
             Create Business Profile
           </button>
         </div>
@@ -204,68 +191,27 @@ const Index = () => {
     switch (currentPage) {
       case "dashboard":
         return <DashboardScreen user={user} notify={notify} />;
-
       case "business-profile":
         return <BusinessProfileScreen user={user} notify={notify} />;
-
       case "posts":
-        return (
-          <PostsScreen
-            business={business}
-            currentUser={user}
-            notify={notify}
-            businessError={businessError}
-            onRetryBusiness={checkAuth}
-          />
-        );
-
+        return <PostsScreen business={business} currentUser={user} notify={notify} businessError={businessError} onRetryBusiness={fetchBusiness} />;
       case "products":
-        return (
-          <ProductsScreen
-            business={business}
-            currentUser={user}
-            notify={notify}
-            businessError={businessError}
-            onRetryBusiness={checkAuth}
-          />
-        );
-
+        return <ProductsScreen business={business} currentUser={user} notify={notify} businessError={businessError} onRetryBusiness={fetchBusiness} />;
       case "promotions":
-        return (
-          <PromotionsScreen
-            business={business}
-            currentUser={user}
-            notify={notify}
-            businessError={businessError}
-            onRetryBusiness={checkAuth}
-          />
-        );
-
+        return <PromotionsScreen business={business} currentUser={user} notify={notify} businessError={businessError} onRetryBusiness={fetchBusiness} />;
       case "ai-setup":
-        // Ensure business exists before showing the wizard
         if (!business) {
           return (
             <div className="p-6 text-center">
               <h2 className="text-xl font-bold mb-4">Business Required</h2>
-              <p className="text-muted-foreground mb-4">
-                Please create a business profile first to set up the AI chatbot.
-              </p>
-              <button
-                onClick={() => setCurrentPage("business-profile")}
-                className="px-4 py-2 bg-primary text-white rounded-lg"
-              >
+              <p className="text-muted-foreground mb-4">Please create a business profile first to set up the AI chatbot.</p>
+              <button onClick={() => setCurrentPage("business-profile")} className="px-4 py-2 bg-primary text-white rounded-lg">
                 Go to Business Profile
               </button>
             </div>
           );
         }
-        return (
-          <ChatbotWizard
-            businessId={business._id}
-            onComplete={handleAiSetupComplete}
-          />
-        );
-
+        return <ChatbotWizard businessId={business._id} onComplete={handleAiSetupComplete} />;
       default:
         return <DashboardScreen user={user} notify={notify} />;
     }
@@ -274,58 +220,33 @@ const Index = () => {
   const isMainApp = token && user;
 
   return (
-    <div
-      className={`font-sans ${
-        isMainApp
-          ? "flex min-h-screen bg-background"
-          : "min-h-screen"
-      }`}
-    >
+    <div className={`font-sans ${isMainApp ? "flex min-h-screen bg-background" : "min-h-screen"}`}>
       {isMainApp && (
         <Sidebar
           currentPage={currentPage}
           onPageChange={setCurrentPage}
-          business={business} // Pass business for displaying business name/logo
+          business={business}
           onLogout={handleLogout}
           isOpen={isSidebarOpen}
           onClose={() => setIsSidebarOpen(false)}
         />
       )}
-
-      <div
-        className={`${
-          isMainApp
-            ? "flex-1 flex flex-col min-h-screen overflow-hidden"
-            : "w-full"
-        }`}
-      >
-        {/* Mobile Header */}
+      <div className={isMainApp ? "flex-1 flex flex-col min-h-screen overflow-hidden" : "w-full"}>
         {isMainApp && (
           <header className="lg:hidden flex items-center justify-between bg-card border-b border-border p-4 sticky top-0 z-30">
-            <button
-              onClick={() => setIsSidebarOpen(true)}
-              className="p-2 text-foreground hover:bg-secondary rounded-xl transition-colors"
-            >
+            <button onClick={() => setIsSidebarOpen(true)} className="p-2 text-foreground hover:bg-secondary rounded-xl transition-colors">
               <Menu size={24} />
             </button>
-
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-info flex items-center justify-center">
                 <Building className="text-white" size={16} />
               </div>
               <span className="font-bold text-foreground">Zooda</span>
             </div>
-
             <div className="w-10" />
           </header>
         )}
-
-        {/* Main Content */}
-        <main
-          className={`${
-            isMainApp ? "flex-1 p-4 lg:p-6 overflow-y-auto" : ""
-          }`}
-        >
+        <main className={isMainApp ? "flex-1 p-4 lg:p-6 overflow-y-auto" : ""}>
           <AnimatePresence mode="wait">
             <motion.div
               key={currentPage}
@@ -339,15 +260,10 @@ const Index = () => {
           </AnimatePresence>
         </main>
       </div>
-
-      {/* Notifications */}
       <AnimatePresence>
         {notification && (
           <div className="fixed top-4 right-4 z-50">
-            <Notification
-              {...notification}
-              onClose={() => setNotification(null)}
-            />
+            <Notification {...notification} onClose={() => setNotification(null)} />
           </div>
         )}
       </AnimatePresence>

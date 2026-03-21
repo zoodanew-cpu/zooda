@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { LogIn, UserPlus, Mail, Lock, User, ArrowLeft, Eye, EyeOff } from 'lucide-react';
 import axios from '@/lib/api';
+import api from '@/lib/api';
 
 interface AuthScreenProps {
   isRegister: boolean;
@@ -38,13 +39,13 @@ const handleAuthSubmit = async (e: React.FormEvent) => {
       ? formData
       : { email: formData.email, password: formData.password };
 
-    const res = await axios.post(isRegister ? "/register" : "/login", payload);
+    // ✅ Use the api instance (which has the correct baseURL)
+    const res = await api.post(isRegister ? "/register" : "/login", payload);
 
-    // ✅ Save token and user
+    // ✅ Store token with key "token"
     if (res.data.token) {
       localStorage.setItem("token", res.data.token);
     }
-
     if (res.data.user) {
       localStorage.setItem("user", JSON.stringify(res.data.user));
     }
