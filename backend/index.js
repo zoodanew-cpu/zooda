@@ -45,7 +45,7 @@ const storage = new CloudinaryStorage({
 //'mongodb+srv://akhileshreddy811_db_user:6MQywIJtJR8oLeCo@cluster0.t0i7d7t.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0
 const upload = multer({ storage });
 console.log("MONGODB_URI exists?", !!process.env.MONGODB_URI);
-const MONGODB_URI = process.env.MONGODB_URI
+const MONGODB_URI = "mongodb://127.0.0.1:27017"
 mongoose
   .connect(MONGODB_URI)
   .then(() => {
@@ -3761,6 +3761,7 @@ app.get('/api/admin/businesses', async (req, res) => {
     res.status(500).json({ message: 'Server error fetching businesses' });
   }
 });
+
 app.delete('/api/admin/businesses/:businessId', async (req, res) => {
   try {
     const mongoose = require('mongoose');
@@ -3800,6 +3801,7 @@ app.delete('/api/admin/businesses/:businessId', async (req, res) => {
     res.status(500).json({ message: 'Server error deleting business' });
   }
 });
+// Update a business
 app.put('/api/admin/businesses/:businessId', async (req, res) => {
   try {
     const { 
