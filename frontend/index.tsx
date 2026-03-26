@@ -5965,9 +5965,7 @@ const App = () => {
       case "About":
         navigate("#about");
         break;
-      case "Bot":
-        navigate("#bot");
-        break;
+     
       default:
         navigate("#home");
     }
@@ -6119,16 +6117,6 @@ const App = () => {
       case "terms":
         return <TermsPage />;
 
-      case "bot":
-  return (
-    <BotPage
-      user={user || undefined}
-      onLoginRequest={() => setShowLoginModal(true)}
-      navigateTo={navigate}
-    />
-  );
-case "chat":
-  return <YourChatPageComponent />;
       case "home":
       default:
         return (
@@ -6174,18 +6162,7 @@ case "chat":
             <span className="nav-text">Posts</span>
           </a>
 
-          <a
-            href="#bot"
-            className={`nav-item ${routeParams.type === "bot" ? "active" : ""}`}
-            onClick={(e) => {
-              e.preventDefault();
-              navigate("#bot");
-            }}
-          >
-            <span className="material-icons">smart_toy</span>
-            <span className="nav-text">Bot</span>
-          </a>
-
+        
           {user && (
             <a
               href="#profile"
