@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback,useMemo  } from "react";
 import { createRoot } from "react-dom/client";
 import axios from "axios";
 import logoUrl from './images/logo.png';
@@ -2227,23 +2227,23 @@ const CompanyListPage = ({
   const [loading, setLoading] = useState(true);
   const [categories, setCategories] = useState<string[]>([]);
   const [subcategories, setSubcategories] = useState<string[]>([]);
-  const [activeTab, setActiveTab] = useState<"All Businesses" | "Top Ranked">(
-    "All Businesses"
-  );
+  const [activeTab, setActiveTab] = useState<"All Businesses" | "Top Ranked">("All Businesses");
   const [selectedCategory, setSelectedCategory] = useState<string>("All");
   const [selectedSubcategory, setSelectedSubcategory] = useState<string>("All");
   const [showPromotionPopup, setShowPromotionPopup] = useState(false);
-  const [currentPopupPromotion, setCurrentPopupPromotion] =
-    useState<Promotion | null>(null);
+  const [currentPopupPromotion, setCurrentPopupPromotion] = useState<Promotion | null>(null);
   const [usedPromotions, setUsedPromotions] = useState<string[]>([]);
   const [showLoginModal, setShowLoginModal] = useState(false);
 
-  // Fetch categories from backend
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const COMPANIES_PER_PAGE = 10;
+
+  // ---------- Fetch categories ----------
   const fetchCategories = async () => {
     try {
       const response = await fetch(`${API_BASE_URL}/api/admin/categories`);
       const data = await response.json();
-      
       if (Array.isArray(data)) {
         const categoryNames = data.map((cat: any) => cat.name);
         setCategories(["All", ...categoryNames]);
@@ -2259,26 +2259,18 @@ const CompanyListPage = ({
     }
   };
 
-  // Fetch subcategories based on selected category
   const fetchSubcategories = async (category: string) => {
     if (category === "All") {
       setSubcategories(["All"]);
       return;
     }
-
     try {
       const response = await fetch(`${API_BASE_URL}/api/admin/categories`);
       const data = await response.json();
-      
       let categoriesData: any[] = [];
-      if (Array.isArray(data)) {
-        categoriesData = data;
-      } else if (data.success && Array.isArray(data.categories)) {
-        categoriesData = data.categories;
-      }
-
+      if (Array.isArray(data)) categoriesData = data;
+      else if (data.success && Array.isArray(data.categories)) categoriesData = data.categories;
       const selectedCat = categoriesData.find((cat: any) => cat.name === category);
-      
       if (selectedCat && Array.isArray(selectedCat.subcategories)) {
         const subcategoryNames = selectedCat.subcategories.map((sub: any) => sub.name);
         setSubcategories(["All", ...subcategoryNames]);
@@ -2291,109 +2283,98 @@ const CompanyListPage = ({
     }
   };
 
-  // Filter active promotions based on displayType
-  const bannerPromotions = allPromotions.filter((promo) => {
-    const isActive = promo.isActive && new Date(promo.endDate) > new Date();
-    const isBanner = promo.displayType === "banner" || promo.type === "banner";
-    return isActive && isBanner;
-  });
+  // Filter promotions
+  const bannerPromotions = useMemo(() => {
+    return allPromotions.filter((promo) => {
+      const isActive = promo.isActive && new Date(promo.endDate) > new Date();
+      const isBanner = promo.displayType === "banner" || promo.type === "banner";
+      return isActive && isBanner;
+    });
+  }, [allPromotions]);
 
-  const popupPromotions = allPromotions.filter((promo) => {
-    const isActive = promo.isActive && new Date(promo.endDate) > new Date();
-    const isPopup = promo.displayType === "popup" || promo.type === "popup";
-    return isActive && isPopup && !usedPromotions.includes(promo._id!);
-  });
+  const popupPromotions = useMemo(() => {
+    return allPromotions.filter((promo) => {
+      const isActive = promo.isActive && new Date(promo.endDate) > new Date();
+      const isPopup = promo.displayType === "popup" || promo.type === "popup";
+      return isActive && isPopup && !usedPromotions.includes(promo._id!);
+    });
+  }, [allPromotions, usedPromotions]);
 
-  // Show popup promotion on mount
   useEffect(() => {
     if (popupPromotions.length > 0 && !showPromotionPopup) {
-      const availablePopup = popupPromotions[0];
-      setTimeout(() => {
-        setCurrentPopupPromotion(availablePopup);
+      const timer = setTimeout(() => {
+        setCurrentPopupPromotion(popupPromotions[0]);
         setShowPromotionPopup(true);
-        setUsedPromotions((prev) => [...prev, availablePopup._id!]);
+        setUsedPromotions((prev) => [...prev, popupPromotions[0]._id!]);
       }, 2000);
+      return () => clearTimeout(timer);
     }
-  }, [popupPromotions.length, showPromotionPopup]);
+  }, [popupPromotions, showPromotionPopup]);
 
-  // Fetch categories on component mount
   useEffect(() => {
     fetchCategories();
   }, []);
 
-  // Fetch subcategories when category changes
   useEffect(() => {
     fetchSubcategories(selectedCategory);
   }, [selectedCategory]);
 
-  // Fetch all businesses once (no category filter)
+  // Fetch all companies
   useEffect(() => {
     const fetchAllCompanies = async () => {
       try {
         setLoading(true);
         const response = await fetch(`${API_BASE_URL}/api/business/all`);
         const data = await response.json();
-
         if (Array.isArray(data)) {
-         const companiesWithStats = await Promise.all(
-  data.map(async (item, index) => {
-    try {
-      const postsResponse = await fetch(`${API_BASE_URL}/api/post/${item._id}`);
-      const postsData = await postsResponse.json();
-      const posts = postsData.posts || [];
-
-      const productsResponse = await fetch(`${API_BASE_URL}/api/product/${item._id}`);
-      const productsData = await productsResponse.json();
-      const products = productsData.products || [];
-
-      const engagementRate = item.engagementRate || 0.0;
-
-      return {
-        _id: item._id,
-        rank: index + 1,
-        name: item.businessName || "Unnamed Business",
-        description: item.businessDescription || "No description available",
-        followers: item.followers,
-        trend: "Rising",
-        siteUrl: item.businessWebsite || "#",
-        logoUrl: item.logoUrl,
-        posts,
-        products,
-        totalPosts: posts.length,
-        totalProducts: products.length,
-        engagementRate,
-        category: item.businessCategory || "Ecommerce",
-        subcategory: item.subcategory || "General",
-        botId: item.botId,   // ✅ critical line
-      } as Company;
-    } catch (error) {
-      // If fetching posts/products fails, still return basic info
-      return {
-        _id: item._id,
-        rank: index + 1,
-        name: item.businessName || "Unnamed Business",
-        description: item.businessDescription || "No description available",
-        followers: item.followers,
-        trend: "Rising",
-        siteUrl: item.businessWebsite || "#",
-        logoUrl: item.logoUrl,
-        posts: [],
-        products: [],
-        engagementRate: 0.0,
-        category: item.businessCategory || "Ecommerce",
-        subcategory: item.subcategory || "General",
-        botId: item.botId,   // ✅ critical line
-      } as Company;
-    }
-  })
-);
-
-          companiesWithStats.sort(
-            (a, b) =>
-              (b.engagementRate as number) - (a.engagementRate as number)
+          const companiesWithStats = await Promise.all(
+            data.map(async (item, index) => {
+              try {
+                const postsResponse = await fetch(`${API_BASE_URL}/api/post/${item._id}`);
+                const postsData = await postsResponse.json();
+                const posts = postsData.posts || [];
+                const productsResponse = await fetch(`${API_BASE_URL}/api/product/${item._id}`);
+                const productsData = await productsResponse.json();
+                const products = productsData.products || [];
+                const engagementRate = item.engagementRate || 0.0;
+                return {
+                  _id: item._id,
+                  rank: index + 1,
+                  name: item.businessName || "Unnamed Business",
+                  description: item.businessDescription || "No description available",
+                  followers: item.followers,
+                  trend: "Rising",
+                  siteUrl: item.businessWebsite || "#",
+                  logoUrl: item.logoUrl,
+                  posts,
+                  products,
+                  totalPosts: posts.length,
+                  totalProducts: products.length,
+                  engagementRate,
+                  category: item.businessCategory || "Ecommerce",
+                  subcategory: item.subcategory || "General",
+                } as Company;
+              } catch {
+                return {
+                  _id: item._id,
+                  rank: index + 1,
+                  name: item.businessName || "Unnamed Business",
+                  description: item.businessDescription || "No description available",
+                  followers: item.followers,
+                  trend: "Rising",
+                  siteUrl: item.businessWebsite || "#",
+                  logoUrl: item.logoUrl,
+                  posts: [],
+                  products: [],
+                  engagementRate: 0.0,
+                  category: item.businessCategory || "Ecommerce",
+                  subcategory: item.subcategory || "General",
+                } as Company;
+              }
+            })
           );
-          companiesWithStats.forEach((c, index) => (c.rank = index + 1));
-
+          companiesWithStats.sort((a, b) => (b.engagementRate as number) - (a.engagementRate as number));
+          companiesWithStats.forEach((c, idx) => (c.rank = idx + 1));
           setAllCompanies(companiesWithStats);
         }
       } catch (err) {
@@ -2402,48 +2383,59 @@ const CompanyListPage = ({
         setLoading(false);
       }
     };
-
     fetchAllCompanies();
   }, []);
 
-  // Local filtering
-  const filteredCompanies = React.useMemo(() => {
+  // Filter and sort
+  const filteredCompanies = useMemo(() => {
     let list = [...allCompanies];
-
     if (selectedCategory !== "All") {
       list = list.filter((c) => c.category === selectedCategory);
     }
-
     if (selectedSubcategory !== "All") {
       list = list.filter((c) => c.subcategory === selectedSubcategory);
     }
-
     if (activeTab === "Top Ranked") {
-      return list.sort(
-        (a, b) => (b.engagementRate as number) - (a.engagementRate as number)
-      );
+      return list.sort((a, b) => (b.engagementRate as number) - (a.engagementRate as number));
     } else {
       return shuffleArray(list);
     }
   }, [allCompanies, selectedCategory, selectedSubcategory, activeTab]);
 
-  // Insert banner after every 3 companies
-  const zigzagContent = React.useMemo(() => {
+  // Pagination
+  const totalPages = Math.ceil(filteredCompanies.length / COMPANIES_PER_PAGE);
+  const paginatedCompanies = useMemo(() => {
+    const start = (currentPage - 1) * COMPANIES_PER_PAGE;
+    const end = start + COMPANIES_PER_PAGE;
+    return filteredCompanies.slice(start, end);
+  }, [filteredCompanies, currentPage]);
+
+  // Insert banners after every 3 companies (on current page only)
+  const zigzagContent = useMemo(() => {
     const content: Array<Company | Promotion> = [];
     let bannerIndex = 0;
-
-    filteredCompanies.forEach((company, index) => {
-      content.push(company);
-      if ((index + 1) % 3 === 0 && bannerPromotions.length > 0) {
-        const bannerPromotion =
-          bannerPromotions[bannerIndex % bannerPromotions.length];
-        content.push(bannerPromotion);
+    for (let i = 0; i < paginatedCompanies.length; i++) {
+      content.push(paginatedCompanies[i]);
+      if ((i + 1) % 3 === 0 && bannerPromotions.length > 0) {
+        const banner = bannerPromotions[bannerIndex % bannerPromotions.length];
+        content.push(banner);
         bannerIndex++;
       }
-    });
-
+    }
     return content;
-  }, [filteredCompanies, bannerPromotions]);
+  }, [paginatedCompanies, bannerPromotions]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeTab, selectedCategory, selectedSubcategory]);
+
+  const goToPreviousPage = useCallback(() => {
+    setCurrentPage((prev) => Math.max(1, prev - 1));
+  }, []);
+
+  const goToNextPage = useCallback(() => {
+    setCurrentPage((prev) => Math.min(totalPages, prev + 1));
+  }, [totalPages]);
 
   const handleClosePopup = () => {
     setShowPromotionPopup(false);
@@ -2458,32 +2450,24 @@ const CompanyListPage = ({
   };
 
   const handleCategoryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const newCategory = e.target.value;
-    setSelectedCategory(newCategory);
+    setSelectedCategory(e.target.value);
     setSelectedSubcategory("All");
   };
 
-  // Handle login request
-  const handleLoginRequest = () => {
-    setShowLoginModal(true);
-  };
+  const handleLoginRequest = () => setShowLoginModal(true);
+  const handleLoginSuccess = () => setShowLoginModal(false);
 
-  // Handle successful login
-  const handleLoginSuccess = (userData: User) => {
-    setShowLoginModal(false);
-  };
-
-  if (loading)
+  if (loading) {
     return (
       <div className="app-center">
         <p className="text-default">Loading companies...</p>
       </div>
     );
+  }
 
   return (
     <>
       <main className="company-list-container">
-        {/* Tabs */}
         <div className="tabs-container">
           <div className="tabs">
             <button
@@ -2503,57 +2487,30 @@ const CompanyListPage = ({
 
         <div className="filters-container">
           <div className="filter-group">
-            <label htmlFor="category-select" className="filter-label">
-              Category:
-            </label>
-            <select
-              id="category-select"
-              value={selectedCategory}
-              onChange={handleCategoryChange}
-              className="filter-select"
-            >
-              {categories.map((cat) => (
-                <option key={cat} value={cat}>
-                  {cat}
-                </option>
-              ))}
+            <label htmlFor="category-select" className="filter-label">Category:</label>
+            <select id="category-select" value={selectedCategory} onChange={handleCategoryChange} className="filter-select">
+              {categories.map((cat) => (<option key={cat} value={cat}>{cat}</option>))}
             </select>
           </div>
-
-          {/* Subcategory dropdown */}
           {subcategories.length > 1 && (
             <div className="filter-group">
-              <label htmlFor="subcategory-select" className="filter-label">
-                Subcategory:
-              </label>
-              <select
-                id="subcategory-select"
-                value={selectedSubcategory}
-                onChange={(e) => setSelectedSubcategory(e.target.value)}
-                className="filter-select"
-              >
-                {subcategories.map((sub) => (
-                  <option key={sub} value={sub}>
-                    {sub}
-                  </option>
-                ))}
+              <label htmlFor="subcategory-select" className="filter-label">Subcategory:</label>
+              <select id="subcategory-select" value={selectedSubcategory} onChange={(e) => setSelectedSubcategory(e.target.value)} className="filter-select">
+                {subcategories.map((sub) => (<option key={sub} value={sub}>{sub}</option>))}
               </select>
             </div>
           )}
         </div>
 
-        {/* Company List + Banners */}
         <div className="company-cards-grid">
           {zigzagContent.length > 0 ? (
-            zigzagContent.map((item, index) => {
+            zigzagContent.map((item, idx) => {
               if ("rank" in item) {
+                const company = item as Company;
                 return (
-                  <div key={`company-${item._id}-${index}`} className="company-card-wrapper">
+                  <div key={`company-${company._id}-${idx}`} className="company-card-wrapper">
                     <CompanyListItem
-                      company={{
-                        ...item,
-                        engagementRate: (item.engagementRate as number).toFixed(1),
-                      }}
+                      company={{ ...company, engagementRate: (company.engagementRate as number).toFixed(1) }}
                       onSelectCompany={onSelectCompany}
                       user={user}
                       onLoginClick={handleLoginRequest}
@@ -2561,42 +2518,33 @@ const CompanyListPage = ({
                   </div>
                 );
               } else {
+                const promo = item as Promotion;
                 return (
-                  <div key={`banner-${item._id}-${index}`} className="banner-card-wrapper">
-                    <PromotionBanner
-                      promotion={item as Promotion}
-                      onClaimOffer={onClaimOffer}
-                    />
+                  <div key={`banner-${promo._id}-${idx}`} className="banner-card-wrapper">
+                    <PromotionBanner promotion={promo} onClaimOffer={onClaimOffer} />
                   </div>
                 );
               }
             })
           ) : (
-            <div className="no-companies-message">
-              No businesses found for selected filters.
-            </div>
+            <div className="no-companies-message">No businesses found for selected filters.</div>
           )}
         </div>
 
-        {/* Popup Promotion */}
-        {showPromotionPopup && currentPopupPromotion && (
-          <PromotionPopup
-            promotion={currentPopupPromotion}
-            onClose={handleClosePopup}
-            onClaimOffer={handleClaimOfferFromPopup}
-          />
+        {totalPages > 1 && (
+          <div className="pagination-controls">
+            <button onClick={goToPreviousPage} disabled={currentPage === 1} className="pagination-btn">← Previous</button>
+            <span className="pagination-info">Page {currentPage} of {totalPages}</span>
+            <button onClick={goToNextPage} disabled={currentPage === totalPages} className="pagination-btn">Next →</button>
+          </div>
         )}
       </main>
 
-      {/* Login Modal */}
-      <LoginModal
-        isOpen={showLoginModal}
-        onClose={() => setShowLoginModal(false)}
-        onLogin={handleLoginSuccess}
-        onOpenRegister={() => {
-          setShowLoginModal(false);
-        }}
-      />
+      {showPromotionPopup && currentPopupPromotion && (
+        <PromotionPopup promotion={currentPopupPromotion} onClose={handleClosePopup} onClaimOffer={handleClaimOfferFromPopup} />
+      )}
+
+      <LoginModal isOpen={showLoginModal} onClose={() => setShowLoginModal(false)} onLogin={handleLoginSuccess} onOpenRegister={() => setShowLoginModal(false)} />
     </>
   );
 };
@@ -4657,7 +4605,7 @@ export const ProfilePage = ({
 
         {/* Tabs */}
         <nav className="mt-6 flex flex-wrap gap-3">
-          {["Posts", "Products", "AI Chat"].map((tab) => (
+          {["Posts", "Products"].map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab as "Posts" | "Products" | "AI Chat")}

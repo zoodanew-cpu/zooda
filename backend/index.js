@@ -45,7 +45,7 @@ const storage = new CloudinaryStorage({
 //'mongodb+srv://akhileshreddy811_db_user:6MQywIJtJR8oLeCo@cluster0.t0i7d7t.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0
 const upload = multer({ storage });
 console.log("MONGODB_URI exists?", !!process.env.MONGODB_URI);
-const MONGODB_URI = "mongodb://127.0.0.1:27017"
+const MONGODB_URI = "mongodb+srv://zoodanew_db_user:BtEKCF6787xJg0Ha@cluster0.yaecgnu.mongodb.net/?appName=Cluster0"
 mongoose
   .connect(MONGODB_URI)
   .then(() => {
