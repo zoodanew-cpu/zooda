@@ -146,6 +146,7 @@ interface Promotion {
 
 const API_BASE_URL = "https://api.zooda.in";
 import { Sparkles } from "lucide-react";
+import { Link } from "react-router-dom";
 
 
 
@@ -982,9 +983,11 @@ const Header = ({
 
   return (
     <header className="app-header">
+      <a href="/" className="logo-link">
       <div className="header-logo" aria-label="Zetova logo">
         <img src={logoUrl} alt="Logo" className="logo-image" />
       </div>
+      </a>
       <div className="search-container" onClick={onSearchClick}>
         <span className="material-icons">search</span>
         <input
@@ -4871,59 +4874,100 @@ const Footer = ({ companyName = "zooda" }: FooterProps) => {
                   alt={companyName}
                   className="w-12 h-12 object-cover rounded-lg"
                 />
-                <span className="text-xl font-semibold">{companyName}</span>
+                <span className="text-xl font-semibold capitalize">
+                  {companyName}
+                </span>
               </div>
-              <div className="mt-10 text-center">
-  <p className="text-gray-300 text-sm md:text-base">
-    Your website deserves to be seen.
-  </p>
-  <p className="text-gray-300 text-sm md:text-base">
-    Your business deserves to stand out.
-  </p>
-  <p className="text-green-400 font-semibold text-base md:text-lg mt-1">
-    Where Engagement Builds Visibility.
-  </p>
-</div>
-            </div>
-{/* TAGLINE */}
 
+              <div className="mt-10 text-center md:text-left">
+                <p className="text-gray-300 text-sm md:text-base">
+                  Your website deserves to be seen.
+                </p>
+
+                <p className="text-gray-300 text-sm md:text-base">
+                  Your business deserves to stand out.
+                </p>
+
+                <p className="text-green-400 font-semibold text-base md:text-lg mt-1">
+                  Where Engagement Builds Visibility.
+                </p>
+              </div>
+            </div>
 
             {/* MIDDLE */}
-            <div className="flex flex-col text-center gap-2">
-              <a href="/" className="hover:text-green-400">Home</a>
-              <a href="#about" className="hover:text-green-400">About</a>
-              <a href="#posts" className="hover:text-green-400">Posts</a>
-              <a href="#contact" className="hover:text-green-400">Contact</a>
-              <a href="#terms" className="hover:text-green-400">Terms</a>
-              <a href="#privacy" className="hover:text-green-400">Privacy</a>
+            <div className="flex flex-col items-center text-center gap-3">
+              <a href="/" className="hover:text-green-400 transition">
+                Home
+              </a>
+
+              <a href="#about" className="hover:text-green-400 transition">
+                About
+              </a>
+
+              <a href="#posts" className="hover:text-green-400 transition">
+                Posts
+              </a>
+
+              <a href="#contact" className="hover:text-green-400 transition">
+                Contact
+              </a>
+
+              <a href="#terms" className="hover:text-green-400 transition">
+                Terms
+              </a>
+
+              <a href="#privacy" className="hover:text-green-400 transition">
+                Privacy
+              </a>
             </div>
 
             {/* RIGHT */}
-            <div className="flex flex-col items-center md:items-end gap-2 text-gray-300">
+            <div className="flex flex-col items-center md:items-end gap-3 text-gray-300">
               <p>📧 zoodanew@gmail.com</p>
+
               <p>📍 Vijayawada</p>
 
               {/* FEEDBACK BUTTON */}
               <button
                 onClick={() => setShowFeedback(true)}
-                className="mt-2 px-4 py-2 bg-green-500 text-black rounded-lg font-semibold hover:bg-green-400 transition"
+                className="mt-2 px-5 py-2 bg-green-500 text-black rounded-lg font-semibold hover:bg-green-400 transition"
               >
                 Give Feedback
               </button>
             </div>
           </div>
 
+          {/* DISCLAIMER */}
+          <div className="mt-8 border-t border-white/10 pt-6 text-center text-gray-400 text-sm leading-7 max-w-4xl mx-auto">
+            <p>
+              Zooda showcases publicly available websites for discovery and
+              does not own or control the content, services, or policies of
+              the listed sites.
+            </p>
+
+            <p className="mt-3">
+              If you are a website owner and would like your site removed
+              from Zooda, please email{" "}
+              <span className="text-green-400 font-medium">
+                zoodanew@gmail.com
+              </span>{" "}
+              and we will process the removal request.
+            </p>
+          </div>
+
           {/* BOTTOM */}
           <div className="border-t border-white/10 mt-8 pt-6 flex flex-col md:flex-row justify-between items-center gap-4">
+
             <a
               href="https://client.zooda.in"
               target="_blank"
+              rel="noopener noreferrer"
               className="px-5 py-2 border-2 border-green-500 text-green-400 rounded-lg hover:bg-green-500 hover:text-black transition font-semibold"
             >
               Business Registration - client.zooda.in
             </a>
 
-            <p className="text-gray-400 text-sm">
+            <p className="text-gray-400 text-sm text-center">
               © {currentYear} {companyName}. All rights reserved.
             </p>
           </div>
@@ -4932,22 +4976,22 @@ const Footer = ({ companyName = "zooda" }: FooterProps) => {
 
       {/* FEEDBACK POPUP */}
       {showFeedback && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
-          <div className="bg-white text-black w-[90%] max-w-md rounded-xl p-6 relative">
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4">
+          <div className="bg-white text-black w-full max-w-md rounded-2xl p-6 relative shadow-2xl">
 
             <button
               onClick={() => setShowFeedback(false)}
-              className="absolute top-3 right-3 text-gray-500 hover:text-black"
+              className="absolute top-3 right-3 text-gray-500 hover:text-black text-lg"
             >
               ✕
             </button>
 
-            <h2 className="text-xl font-bold mb-3 text-center">
+            <h2 className="text-2xl font-bold mb-4 text-center">
               Your Feedback
             </h2>
 
             {submitted ? (
-              <p className="text-green-600 text-center font-semibold">
+              <p className="text-green-600 text-center font-semibold text-lg">
                 ✅ Feedback submitted successfully!
               </p>
             ) : (
@@ -4955,14 +4999,14 @@ const Footer = ({ companyName = "zooda" }: FooterProps) => {
                 <textarea
                   value={feedback}
                   onChange={(e) => setFeedback(e.target.value)}
-                  rows={4}
+                  rows={5}
                   placeholder="Write your feedback..."
-                  className="w-full border border-gray-300 rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-green-400"
+                  className="w-full border border-gray-300 rounded-xl p-3 focus:outline-none focus:ring-2 focus:ring-green-400 resize-none"
                 />
 
                 <button
                   onClick={handleSubmitFeedback}
-                  className="w-full mt-4 bg-green-500 text-black py-2 rounded-lg font-semibold hover:bg-green-400 transition"
+                  className="w-full mt-4 bg-green-500 text-black py-3 rounded-xl font-semibold hover:bg-green-400 transition"
                 >
                   Submit Feedback
                 </button>
